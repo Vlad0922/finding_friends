@@ -1,1 +1,3 @@
 vk
+pymongo
+tqdm
