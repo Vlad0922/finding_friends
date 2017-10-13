@@ -16,7 +16,7 @@ def get_search_params():
     params['city'] = 2       # SpB is our default city ;)
     params['country'] = 1    # only russian girls
     params['has_photo'] = 1  # to filter fakes or empty pages
-    params['count'] = 100    # 10 only for testing
+    params['count'] = 1000    # 10 only for testing
 
     return params
 
@@ -37,7 +37,7 @@ def load_users(api):
     db = client.ir_project
 
     search_params = get_search_params()
-    offset = search_params['count']
+    offset = 1
     batch_size = search_params['count']
 
     result = api.users.search(**search_params)  # first value in list is total size of peoples in query result
@@ -46,14 +46,14 @@ def load_users(api):
     db.users.insert_many(result[1:])
 
     print('Loading users...')
-    with tqdm.tqdm(total=total_count, initial=offset) as pbar:
-        while offset < total_count:
+    with tqdm.tqdm(total=total_count, initial=batch_size) as pbar:
+        while offset*batch_size < total_count:
             time.sleep(3)  # internal vk delay for search query
 
             result = api.users.search(**search_params, offset=offset)
             db.users.insert_many(result[1:])
 
-            offset += batch_size
+            offset += 1
             pbar.update(batch_size)
 
 
