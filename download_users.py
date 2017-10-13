@@ -7,15 +7,18 @@ import tqdm
 from pymongo import MongoClient
 
 
+AGE_FROM    = 16  # russian law is strict
+AGE_TO      = 80  # well...
+
+
 def get_search_params():
     params = dict()
 
-    params['sex'] = 1        # only girls!
-    params['status'] = 6     # only in active search
-    params['age_from'] = 16  # russian law is strict
-    params['city'] = 2       # SpB is our default city ;)
-    params['country'] = 1    # only russian girls
-    params['has_photo'] = 1  # to filter fakes or empty pages
+    params['sex'] = 1         # only girls!
+    params['status'] = 6      # only in active search
+    params['city'] = 2        # SpB is our default city ;)
+    params['country'] = 1     # only russian girls
+    params['has_photo'] = 1   # to filter fakes or empty pages
     params['count'] = 1000    # 10 only for testing
 
     return params
@@ -37,47 +40,43 @@ def load_users(api):
     db = client.ir_project
 
     search_params = get_search_params()
-    batch_size = search_params['count']
-    offset = 1
 
-    result = api.users.search(**search_params)  # first value in list is total size of peoples in query result
-    total_count = result[0]
+    for i in tqdm.trange(AGE_FROM, AGE_TO+1, desc='Loading users...'):  # we cannot have more than 1000 results in one query so let's split
+        search_params['age_from'] = i                                   # one big query in multiple smaller
+        search_params['age_to'] = i+1
 
-    db.users.insert_many(result[1:])
+        result = api.users.search(**search_params)  # first value in list is total size of peoples in query result
 
-    print('Loading users...')
-    with tqdm.tqdm(total=total_count, initial=batch_size) as pbar:
-        while offset*batch_size < total_count:
-            time.sleep(3)  # internal vk delay for search query
+        db.users.insert_many(result[1:])
 
-            result = api.users.search(**search_params, offset=offset)
-            db.users.insert_many(result[1:])
-
-            offset += 1
-            pbar.update(batch_size)
+        time.sleep(1)  # internal cooldown for vk
 
 
 def get_wall_params():
     params = dict()
 
-    params['filter'] = 'owner' # only owner posts to get only owners views
-    params['extended'] = 0 # we don't need this extra information
-    params['count'] = 10 # 10 only for testing
+    params['filter'] = 'owner'  # only owner posts to get only owners views
+    params['extended'] = 0      # we don't need this extra information
+    params['count'] = 100       # 10 only for testing
 
     return params
 
 
-def load_walls(api):
+def load_wall_posts(api):
     client = MongoClient()
     db = client.ir_project
 
     wall_params = get_wall_params()
-    batch_size = wall_params['count']
+    total_users = db.users.count()
 
-    for user in db.users.find():
-        posts = get_all_user_posts(api, user)
-        print(api.wall.get(**wall_params, owner_id=user['uid']))
-        break
+    for user in tqdm.tqdm(db.users.find(), total=total_users, desc='Loading wall posts...'): 
+        result = api.wall.get(**wall_params, owner_id=user['uid'])
+
+        if result[0] != 0:
+            db.wall_posts.insert_many(result[1:])
+
+        time.sleep(0.4) # internal cooldown for vk
+
 
 def main():
     auth_params = get_auth_params()
@@ -85,8 +84,7 @@ def main():
 
     api = vk.API(session)
     # load_users(api)
-    load_walls(api)
-
+    load_wall_posts(api)
 
 
 if __name__ == '__main__':
