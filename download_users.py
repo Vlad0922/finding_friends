@@ -37,8 +37,8 @@ def load_users(api):
     db = client.ir_project
 
     search_params = get_search_params()
-    offset = 1
     batch_size = search_params['count']
+    offset = 1
 
     result = api.users.search(**search_params)  # first value in list is total size of peoples in query result
     total_count = result[0]
@@ -57,12 +57,36 @@ def load_users(api):
             pbar.update(batch_size)
 
 
+def get_wall_params():
+    params = dict()
+
+    params['filter'] = 'owner' # only owner posts to get only owners views
+    params['extended'] = 0 # we don't need this extra information
+    params['count'] = 10 # 10 only for testing
+
+    return params
+
+
+def load_walls(api):
+    client = MongoClient()
+    db = client.ir_project
+
+    wall_params = get_wall_params()
+    batch_size = wall_params['count']
+
+    for user in db.users.find():
+        posts = get_all_user_posts(api, user)
+        print(api.wall.get(**wall_params, owner_id=user['uid']))
+        break
+
 def main():
     auth_params = get_auth_params()
     session = vk.AuthSession(**auth_params)
 
     api = vk.API(session)
-    load_users(api)
+    # load_users(api)
+    load_walls(api)
+
 
 
 if __name__ == '__main__':
