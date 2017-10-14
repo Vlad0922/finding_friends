@@ -83,6 +83,39 @@ def load_wall_posts(api):
         time.sleep(0.4)  # internal cooldown for vk: not more than 3 requests per second
 
 
+def get_user_params():
+    params = dict()
+
+    params['fields'] = 'photo_max_orig, education, personal, interests,activities,music, movies, tv, books, games, about, quotes, schools, site, occupation'
+
+    return params
+
+
+def get_user_ids(db, f, t):
+    return ','.join([str(user['uid']) for user in db.users.find()[f:t]])
+
+def load_user_info(api):
+    client = MongoClient()
+    db = client.ir_project
+
+    user_params = get_user_params()
+    total_users = db.users.count()
+
+    batch_size = 1000
+
+    for i in tqdm.trange(0, total_users, batch_size, desc='Loading users info...'):
+        users = get_user_ids(db, i, i+batch_size)
+        try:
+            result = api.users.get(**user_params, user_ids=users)
+
+            if len(result) != 0:
+                db.user_info.insert_many(result)
+        except Exception as e:
+            print(e)
+
+        time.sleep(0.4)
+
+
 def main(args):
     auth_params = get_auth_params()
     session = vk.AuthSession(**auth_params)
@@ -95,6 +128,9 @@ def main(args):
     if args.wall_posts:
         load_wall_posts(api)
 
+    if args.user_info:
+        load_user_info(api)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script to download users and information about them')
@@ -103,6 +139,8 @@ if __name__ == '__main__':
                         help='Download users?')
     parser.add_argument('--wall_posts', action='store_true', default=False,
                         help='Download wall posts for users in db?')
+    parser.add_argument('--user_info', action='store_true', default=False,
+                        help='Download user info?')
 
     args = parser.parse_args()
 
