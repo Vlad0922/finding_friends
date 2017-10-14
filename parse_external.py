@@ -67,24 +67,21 @@ def create_links_info(db):
 
 
 def create_links_wposts(db):
-    links = dict()
-    for user in tqdm.tqdm(db.users.find(), total=db.users.count()):
-        posts = db.wall_posts.find({'uid': user['uid']})
+    links = defaultdict(lambda: list())
 
-        text_urls = list()
+    for p in tqdm.tqdm(db.wall_posts.find(), total=db.wall_posts.count()):
+        text_urls = find_urls(p['text'])
         post_urls = list()
-        for p in posts:
-            text_urls.extend(find_ulrs(p['text']))
 
-            if 'attachments' in p:
-                for a in p['attachments']:
-                    if a['type'] == 'link':
-                        a_url = a['link']['url']
-                        if check_domain(a_url):
-                            post_urls.append(a_url)
+        if 'attachments' in p:
+            for a in p['attachments']:
+                if a['type'] == 'link':
+                    a_url = a['link']['url']
+                    if check_domain(a_url):
+                        post_urls.append(a_url)
 
         if len(text_urls) > 0 or len(post_urls) > 0:
-            links[user['uid']] = text_urls + post_urls
+            links[p['from_id']].extend(text_urls + post_urls)
 
     return links
 
