@@ -55,10 +55,7 @@ def check_personal(user):
     return lst
 
 
-def create_links_info():
-    client = MongoClient()
-    db = client.ir_project
-
+def create_links_info(db):
     links = dict()
     for user in db.user_info.find():
         user_links = check_personal(user)
@@ -69,10 +66,7 @@ def create_links_info():
     return links
 
 
-def create_links_wposts():
-    client = MongoClient()
-    db = client.ir_project
-
+def create_links_wposts(db):
     links = dict()
     for user in tqdm.tqdm(db.users.find(), total=db.users.count()):
         posts = db.wall_posts.find({'uid': user['uid']})
@@ -96,23 +90,27 @@ def create_links_wposts():
 
 
 def main(args):
+    client = MongoClient()
+    db = client.ir_project
+
     all_links = defaultdict(lambda: set())
 
     if args.user_info:
-        site_links = create_links_info()
+        site_links = create_links_info(db)
 
         for k in site_links:
             all_links[k].update(site_links[k])
 
     if args.wall_posts:
-        wall_links = create_links_wposts()
+        wall_links = create_links_wposts(db)
 
         for k in wall_links:
             all_links[k].update(wall_links[k])
 
     all_links = [{'uid': k, 'links': list(all_links[k])} for k in all_links]  # prepare links for mongo
 
-    db.links.insert_many(all_links)
+    if len(all_links) > 0:
+        db.links.insert_many(all_links)
 
 
 if __name__ == '__main__':
