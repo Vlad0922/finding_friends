@@ -1,3 +1,4 @@
 vk
 pymongo
 tqdm
+tldextract
