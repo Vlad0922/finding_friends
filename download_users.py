@@ -1,4 +1,5 @@
 import time
+import argparse
 
 import vk
 
@@ -7,8 +8,8 @@ import tqdm
 from pymongo import MongoClient
 
 
-AGE_FROM    = 16  # russian law is strict
-AGE_TO      = 80  # well...
+AGE_FROM = 16  # russian law is strict
+AGE_TO = 80    # well...
 
 
 def get_search_params():
@@ -43,13 +44,14 @@ def load_users(api):
 
     for i in tqdm.trange(AGE_FROM, AGE_TO+1, desc='Loading users...'):  # we cannot have more than 1000 results in one query so let's split
         search_params['age_from'] = i                                   # one big query in multiple smaller
-        search_params['age_to'] = i+1
+        search_params['age_to'] = i
 
         result = api.users.search(**search_params)  # first value in list is total size of peoples in query result
 
-        db.users.insert_many(result[1:])
+        if result[0] != 0:
+            db.users.insert_many(result[1:])
 
-        time.sleep(1)  # internal cooldown for vk
+        time.sleep(0.4)  # internal cooldown for vk
 
 
 def get_wall_params():
@@ -69,23 +71,39 @@ def load_wall_posts(api):
     wall_params = get_wall_params()
     total_users = db.users.count()
 
-    for user in tqdm.tqdm(db.users.find(), total=total_users, desc='Loading wall posts...'): 
-        result = api.wall.get(**wall_params, owner_id=user['uid'])
+    for user in tqdm.tqdm(db.users.find(), total=total_users, desc='Loading wall posts...'):
+        try:
+            result = api.wall.get(**wall_params, owner_id=user['uid'])
 
-        if result[0] != 0:
-            db.wall_posts.insert_many(result[1:])
+            if result[0] != 0:
+                db.wall_posts.insert_many(result[1:])
+        except Exception as e:
+            print(e)
 
-        time.sleep(0.4) # internal cooldown for vk
+        time.sleep(0.4)  # internal cooldown for vk: not more than 3 requests per second
 
 
-def main():
+def main(args):
     auth_params = get_auth_params()
     session = vk.AuthSession(**auth_params)
 
     api = vk.API(session)
-    # load_users(api)
-    load_wall_posts(api)
+
+    if args.users:
+        load_users(api)
+
+    if args.wall_posts:
+        load_wall_posts(api)
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Script to download users and information about them')
+
+    parser.add_argument('--users', action='store_true', default=False,
+                        help='Download users?')
+    parser.add_argument('--wall_posts', action='store_true', default=False,
+                        help='Download wall posts for users in db?')
+
+    args = parser.parse_args()
+
+    main(args)
