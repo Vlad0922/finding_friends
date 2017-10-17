@@ -69,7 +69,7 @@ def create_links_info(db):
 def create_links_wposts(db):
     links = defaultdict(lambda: list())
 
-    for p in tqdm.tqdm(db.wall_posts.find(), total=db.wall_posts.count()):
+    for p in tqdm.tqdm(db.wall_posts.find(), total=db.wall_posts.count(), desc='Wall posts'):
         text_urls = find_urls(p['text'])
         post_urls = list()
 

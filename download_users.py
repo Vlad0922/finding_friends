@@ -17,7 +17,7 @@ def get_search_params():
 
     params['sex'] = 1         # only girls!
     params['status'] = 6      # only in active search
-    params['city'] = 2        # SpB is our default city ;)
+    params['city'] = 1        # SpB is our default city ;)
     params['country'] = 1     # only russian girls
     params['has_photo'] = 1   # to filter fakes or empty pages
     params['count'] = 1000    # 10 only for testing
