@@ -143,6 +143,8 @@ def main(args):
 
     print(crawler.result.qsize())
 
+    db.links_content.insert_many(crawler.result)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script to crawl external links from users')
 
