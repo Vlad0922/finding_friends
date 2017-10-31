@@ -3,7 +3,7 @@ import argparse
 
 from collections import defaultdict
 
-from queue import Queue
+# from queue import Queue
 
 import urllib.request
 from urllib.error import HTTPError
@@ -29,12 +29,31 @@ def get_thumbnail_url(youtube_id, max_res=False):
         return 'https://img.youtube.com/vi/{}/default.jpg'.format(youtube_id)
 
 
+def get_links_set(db):
+    links = set()
+
+    for link_info in db.links.find():
+        for l in link_info['links']:
+            links.update(l.split('<br>'))
+
+    return links    
+
+
 class Crawler(object):
-    def __init__(self, links, n_threads=10):
-        self.links = links
+    def __init__(self, db, n_threads=10, max_len=500):
+        self.db = db
+        self.links = get_links_set(db)
+
+        # import random
+        # self.links = random.sample(self.links, 100) # for testing purposes
 
         self.n_threads = n_threads
         self.mutex = Lock()
+
+        self.result = list()
+        self.failed = list()
+
+        self.max_list_len = max_len
 
         self._create_domains_map()
 
@@ -65,21 +84,38 @@ class Crawler(object):
         self.pbar = tqdm.tqdm(total = len(self.links))
 
         pool = Pool(processes=self.n_threads)
-        result = pool.map(self._links_worker, self.links)
+        pool.map(self._links_worker, self.links)
 
-        self.result = list()
-        self.failed = list()
+        if len(self.result):
+            self.db.links_content.insert_many(self.result)
+            self.result = list()
 
-        for r in result:
-            if r[1] == 'ok':
-                self.result.append(r)
-            else:
-                self.failed.append(r)
+        if len(self.failed):
+            self.db.links_content.insert_many(self.failed)
+            self.failed = list()
+
 
     def _links_worker(self, url):
-        def _inc_pbar():
+        def _do_step(content, status):
             self.mutex.acquire()
+
+            content['url'] = url
+
+            if status == 'ok':
+                self.result.append(content)
+            else:
+                self.failed.append(content)
+
+            if len(self.result) > self.max_list_len:
+                self.db.links_content.insert_many(self.result)
+                self.result = list()
+
+            if len(self.failed) > self.max_list_len:
+                self.db.links_failed.insert_many(self.failed)
+                self.failed = list()
+
             self.pbar.update(1)
+
             self.mutex.release()
 
         page_content = {}
@@ -93,9 +129,10 @@ class Crawler(object):
             status = "ok"
             time.sleep(0.25)
 
-        _inc_pbar()
+        # _inc_pbar()
+        _do_step(page_content, status)
 
-        return (page_content, status)
+        # return (page_content, status)
 
 
     def _load_sprashivai(soup):
@@ -170,30 +207,16 @@ class Crawler(object):
                 }
 
 
-def get_links_set(db):
-    links = set()
-
-    for link_info in db.links.find():
-        for l in link_info['links']:
-            links.update(l.split('<br>'))
-
-    return links    
-
 def main(args):
     client = MongoClient()
     db = client.ir_project
 
-    links_list = get_links_set(db)
-
-    # import random
-    # links_list = random.sample(links_list, 100) # for testing purposes
-
-    crawler = Crawler(links_list, args.n_threads)
+    crawler = Crawler(db, args.n_threads)
     crawler.start()
 
     print(len(crawler.result), len(crawler.failed))
 
-    db.links_content.insert_many(crawler.result)
+    # db.links_content.insert_many(crawler.result)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script to crawl external links from users')
