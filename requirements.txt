@@ -2,3 +2,6 @@ vk
 pymongo
 tqdm
 tldextract
+flask
+flask_socketio
+configparser

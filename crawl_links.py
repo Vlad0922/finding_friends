@@ -29,12 +29,19 @@ def get_thumbnail_url(youtube_id, max_res=False):
         return 'https://img.youtube.com/vi/{}/default.jpg'.format(youtube_id)
 
 
-def get_links_set(db):
+def get_links_set(db, only_new=True):
     links = set()
 
     for link_info in db.links.find():
         for l in link_info['links']:
             links.update(l.split('<br>'))
+
+    if only_new:
+        worked_links = set()
+        worked_links.update([link_info['url'] for link_info in db.links_content.find()])
+        worked_links.update([link_info['url'] for link_info in db.links_failed.find()])
+
+        links = links - worked_links
 
     return links    
 
