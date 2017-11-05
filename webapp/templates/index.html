@@ -7,19 +7,74 @@
     <title>Finding friends</title>
 
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/css/styles.css">
 
+    <link rel="stylesheet" href="/static/css/switch.css">
+    <link rel="stylesheet" href="/static/css/styles.css">  
   </head>
   <body>
 
-    <div class="jumbotron vertical-center">
+    <div class="jumbotron vertical-center" id="logo_div">
       <div class="container-fluid" id="header">
       </div>
     </div>
 
-    <div class="form-group" id="query_form">
-      <label for="search_query">Search query or user link:</label>
-      <input type="text" class="form-control" id="search_query">
+    <form>
+      <div class="container">
+        <div class="input-group">
+          <input type="text" class="form-control" placeholder="Search query or user link">
+          <div class="input-group-btn">
+            <button class="btn btn-default" type="submit">
+              <i class="glyphicon glyphicon-search"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <div id="filter_div" class = "container">
+      <div class="container">
+        <label class="switch" onchange="$('#filter_panel').collapse('toggle');">
+          <input type="checkbox">
+          <span class="slider round"></span>
+        </label>
+      </div>
+      <!-- <a class="btn btn-info" data-toggle="collapse" href="#filter_panel">Show/hide filter options</a> -->
+
+      <div id="filter_panel" class="collapse">
+        <div class="input-group">
+          <span class="input-group-addon">Age</span>
+          <div class="row">
+              <div class="form-group col-xs-6">
+                  <input id="age_from" class="form-control input-group-lg" type="text" name="age_from" placeholder="16"/>
+              </div>
+
+              <div class="form-group col-xs-6">
+                  <input id="age_to" class="form-control input-group-lg" type="text" name="age_to" placeholder="99"/>
+              </div>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <span class="input-group-addon">City</span>
+          <input type="text" class="form-control" placeholder="Saint-Petersburg" name="city" id="city">
+        </div>
+
+        <form>
+          <div class="form">
+            <label for="sel1">Select status:</label>
+            <select class="form-control" id="sel1">
+              <option>Not married </option>
+              <option>In a relationship </option>
+              <option>Engaged </option>
+              <option>Married</option>
+              <option>It's complicated</option>
+              <option>Actively searching</option>
+              <option>In love</option>
+            </select>
+          </div>
+        </form>
+
+      </div>
     </div>
 
     <footer>
@@ -27,16 +82,17 @@
     </footer>
 
     <!-- libraries -->
-<!--     <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.3.6/proj4.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+
+   <!--  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.3.6/proj4.js"></script>
     <script src="https://code.highcharts.com/stock/highstock.js"></script>
     <script src="https://code.highcharts.com/highcharts-more.js"></script>
     <script src="https://code.highcharts.com/modules/exporting.js"></script>
  -->
     <script src="/static/js/socket.io.min.js"></script>
-    <!-- <script src="/static/js/utility.js"></script> -->
-
-    <!-- Latest compiled and minified JavaScript -->
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script src="/static/js/utility.js"></script>
+    
   </body>
 </html>
