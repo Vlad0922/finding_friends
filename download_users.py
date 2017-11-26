@@ -51,7 +51,7 @@ def load_users(api):
         if result[0] != 0:
             db.users.insert_many(result[1:])
 
-        time.sleep(0.4)  # internal cooldown for vk
+        time.sleep(0.4)  # not more than 3 queries per second
 
 
 def get_wall_params():
