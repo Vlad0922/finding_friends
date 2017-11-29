@@ -1,1 +1,4 @@
 auth_data.txt
+*.pickle
+*.bin
+*.ipynb_checkpoints/
