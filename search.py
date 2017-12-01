@@ -177,8 +177,50 @@ def main(args):
         if go_on == 'Yes' or go_on == 'yes':
             query = input('give a new query: ')
             continue
-
         break
+
+
+class SearchEngine:
+    def __init__(self):
+        self.bm25 = None
+        self.doc2vec_searcher = None
+
+    def search(self, method, mode, query, max_num_of_results, gender, age_range, city):
+        if method == 'BM25':
+            if not self.bm25:
+                self.bm25 = BM25()
+            searcher = self.bm25
+        elif method == 'doc2vec':
+            if not self.doc2vec_searcher:
+                self.doc2vec_searcher = Doc2vecSearcher()
+            searcher = self.doc2vec_searcher
+        else:
+            raise ValueError('unknown method. Only BM25 and doc2vec are supported')
+
+        if mode == 'recommend':
+            query_processed = searcher.stemming(download_users.get_user_info(query))
+        else:
+            query_processed = searcher.stemming(args.query)
+
+        satisfactory_uids = [user['uid'] for user in
+                             self.db.users.find({
+                                '$and': [
+                                    {'gender': gender}, {'city': city},
+                                    {'age': {'$gte': age_range[0], '$lte': age_range[1]}}
+                                ]
+                            })]
+
+        while True:
+            ids = searcher.search(query_processed, max_num_of_results, verbose=False)
+
+            filtered_ids = [uid for uid in ids if uid in satisfactory_uids]
+
+            if len(filtered_ids) == max_num_of_results:
+                return filtered_ids
+            elif max_num_of_results >= len(satisfactory_uids):
+                return filtered_ids
+
+            max_num_of_results *= 4
 
 
 if __name__ == '__main__':
