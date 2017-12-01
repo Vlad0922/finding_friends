@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(0,'..')
+
 import numpy as np
 
 from collections import defaultdict
@@ -11,9 +14,13 @@ import json
 
 import configparser
 
+from search import SearchEngine
+
 app = Flask('Finding friends app')
 client = MongoClient()
 db = client.ir_project
+
+eng = SearchEngine(db)
 
 
 city_map = defaultdict(lambda: 'Unknown',
@@ -43,19 +50,25 @@ def get_topics(uid):
 
 
 def get_users(text, filters, count=30):
-    res = [{k:val for k, val in u.items() if k != '_id'} for u in db.users.aggregate([{'$match':{'sex':1}}, {'$sample': {'size':count}}])]
+    search_res = {uid:score for uid,score in eng.search('BM25', 'search', text, 20, 1, (18, 25), 1)}
+
+    res = [u for u in db.users.find({'uid': {'$in': list(search_res.keys())}})]
 
     photos = defaultdict(lambda: 'https://vk.com/images/camera_200.png',
                             {u['uid']:u['photo_max_orig'] for u in db.user_info.find({"uid": {"$in": [r['uid'] for r in res]}})}) 
 
     for r in res:
         r['photo'] = photos[r['uid']]
-        r['sex'] = gender_map[r['sex']]
-        r['city'] = city_map[r['city']]
+        # r['sex'] = gender_map[r['sex']]
+        # r['city'] = city_map[r['city']]
+        r['sex'] = 'Female'
+        r['city'] = 'Saint-Petersburg'
         r['topics'] = get_topics(r['uid'])
-        r['score'] = round(np.random.uniform(), 3)
+        r['score'] = search_res[r['uid']]
 
-    return res
+        del r['_id']
+
+    return sorted(res, key=lambda r: r['score'], reverse=False)
 
 
 @app.route('/process_query', methods=['POST', 'GET'])

@@ -19,6 +19,10 @@ from gensim.models.doc2vec import TaggedDocument
 from collections import Counter
 
 
+from utility import Stemmizer
+
+s = Stemmizer()
+
 class Index:
     def __init__(self, db):
         self.db = db
@@ -134,22 +138,7 @@ class Index:
 
         text += self.users_to_posts[self.ids_indices_dict[uid]]
 
-        def stemming(text):
-            # Removing punctuation, numbers and processing to lower case
-
-            text = re.sub('[^а-яА-Яa-zA-Z\s]', '', text).lower()
-            words = text.split()
-
-            # Removing stop words
-            russian_stopwords = set(stopwords.words('russian'))
-            english_stopwords = set(stopwords.words('english'))
-
-            stops = set.intersection(russian_stopwords, english_stopwords)
-
-            words = [self.morpher.parse(word)[0].normal_form for word in words if not word in stops]
-            return ' '.join(words)
-
-        text = stemming(text)
+        text = s.process(text)
 
         self.forward_index.insert_one({'uid': uid, 'text': text})
 
