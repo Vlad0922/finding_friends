@@ -19,11 +19,13 @@ def hello_world():
 
 
 def get_topics(uid):
-    return np.random.uniform(size=25).tolist()
+	topics = np.random.uniform(size=25)
+	topics /= np.sum(topics)
 
+	return topics.tolist()
 
-def get_users(text, filters):
-    res = [{k:val for k, val in u.items() if k != '_id'} for u in db.users.aggregate([{'$sample': {'size':10}}])]
+def get_users(text, filters, count=30):
+    res = [{k:val for k, val in u.items() if k != '_id'} for u in db.users.aggregate([{'$sample': {'size':count}}])]
 
     for r in res:
         r['topics'] = get_topics(r['uid'])

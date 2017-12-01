@@ -8,8 +8,6 @@
 
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
     <link rel="https://cdn.datatables.net/1.10.16/css/dataTables.bootstrap.min.css">
-    <!-- <link rel="https://cdn.datatables.net/select/1.2.3/css/select.bootstrap.min.css"> -->
-
 
     <link rel="stylesheet" href="/static/css/switch.css">
     <link rel="stylesheet" href="/static/css/styles.css">  
@@ -21,8 +19,9 @@
       </div>
     </div>
 
-    <!-- <form> -->
-      <div class="container">
+    <div id="global_div">
+
+      <div class="container" id = "query_container">
         <div class="input-group">
           <input type="text" class="form-control" placeholder="Search query or user link" id="query_text">
           <div class="input-group-btn">
@@ -32,52 +31,52 @@
           </div>
         </div>
       </div>
-    <!-- </form> -->
 
-    <div id="filter_div" class = "container">
-      <div class="container">
-        <label class="switch" onchange="$('#filter_panel').collapse('toggle');">
-          <input type="checkbox">
-          <span class="slider round"></span>
-        </label>
-      </div>
-      <!-- <a class="btn btn-info" data-toggle="collapse" href="#filter_panel">Show/hide filter options</a> -->
-
-      <div id="filter_panel" class="collapse">
-        <div class="input-group">
-          <span class="input-group-addon">Age</span>
-          <div class="row">
-              <div class="form-group col-xs-6">
-                  <input id="age_from" class="form-control input-group-lg" type="text" name="age_from" placeholder="16"/>
-              </div>
-
-              <div class="form-group col-xs-6">
-                  <input id="age_to" class="form-control input-group-lg" type="text" name="age_to" placeholder="99"/>
-              </div>
-          </div>
+      <div id="filter_div" class = "container">
+        <div class="container">
+          <label class="switch" onchange="$('#filter_panel').collapse('toggle');">
+            <input type="checkbox">
+            <span class="slider round"></span>
+          </label>
         </div>
 
-        <div class="input-group">
-          <span class="input-group-addon">City</span>
-          <input type="text" class="form-control" placeholder="Saint-Petersburg" name="city" id="city">
-        </div>
+        <div id="filter_panel" class="collapse">
+          <div class="input-group">
+            <span class="input-group-addon">Age</span>
+            <div class="row">
+                <div class="form-group col-xs-6">
+                    <input id="age_from" class="form-control input-group-lg" type="text" name="age_from" placeholder="16"/>
+                </div>
 
-        <form>
-          <div class="form">
-            <label for="sel1">Select status:</label>
-            <select class="form-control" id="sel1">
-              <option>Not married </option>
-              <option>In a relationship </option>
-              <option>Engaged </option>
-              <option>Married</option>
-              <option>It's complicated</option>
-              <option>Actively searching</option>
-              <option>In love</option>
-            </select>
+                <div class="form-group col-xs-6">
+                    <input id="age_to" class="form-control input-group-lg" type="text" name="age_to" placeholder="99"/>
+                </div>
+            </div>
           </div>
-        </form>
 
+          <div class="input-group">
+            <span class="input-group-addon">City</span>
+            <input type="text" class="form-control" placeholder="Saint-Petersburg" name="city" id="city">
+          </div>
+
+          <form>
+            <div class="form">
+              <label for="sel1">Select status:</label>
+              <select class="form-control" id="sel1">
+                <option>Not married </option>
+                <option>In a relationship </option>
+                <option>Engaged </option>
+                <option>Married</option>
+                <option>It's complicated</option>
+                <option>Actively searching</option>
+                <option>In love</option>
+              </select>
+            </div>
+          </form>
+
+        </div>
       </div>
+
     </div>
 
     <div id="search_div" style="display:none" class="row">
@@ -99,8 +98,10 @@
       </div>
     </div>
 
+
+
     <footer>
-      <p>&copy; Myrov Vladislav and Sosin Ivan, 2017, https://github.com/Vlad0922/finding_friends</p>
+      <p id="footer_text">&copy; Myrov Vladislav and Sosin Ivan, 2017, https://github.com/Vlad0922/finding_friends</p>
     </footer>
 
     <!-- libraries -->

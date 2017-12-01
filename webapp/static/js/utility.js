@@ -2,14 +2,20 @@ var topics = [];
 
 function add_search_results(data)
 {
+    Plotly.purge('topics_wrapper');
+
     table = $('#search_table').DataTable();
+
+    table.clear();
+    topics = [];
+
     for(idx in data)
     {
         person = data[idx];
 
         topics.push(person['topics']);
 
-        table.row.add({'Name': {'text': person['first_name'] + ' ' + person['last_name'], 'id':person['uid']},
+        table.row.add({'Name': {'text': person['first_name'] + ' ' + person['last_name'], 'uid':person['uid']},
                     'Age':person['age'],
                     'City': person['city'],
                     'Sex':person['sex']}).draw()
@@ -33,69 +39,48 @@ function plot_topics(idx)
       orientation: 'h'
     }];
 
-    Plotly.newPlot('topics_wrapper', data, {
-        title: 'Topics',
-        font: {
-        size: 16
-        },
-            margin: {
-                t: 30, //top margin
-                l: 70, //left margin
-                r: 20, //right margin
-                b: 20 //bottom margin
-            }
-        });
+    var layout = {
+                    title: 'Topics',
+                    font: { size: 16 },
+                    margin: {
+                        t: 30, //top margin
+                        l: 70, //left margin
+                        r: 20, //right margin
+                        b: 20 //bottom margin
+                    }  
+                  }
 
-    // Plotly.plot(gd, [{
-    //     type: 'bar',
-    //     x: [1, 2, 3, 4],
-    //     y: [5, 10, 2, 8],
-    //     marker: {
-    //     color: '#C8A2C8',
-    //     line: {
-    //     width: 2.5
-    //     }
-    //     }
-    //     }], {
-    //     title: 'Auto-Resize',
-    //     font: {
-    //     size: 16
-    //     },
-    //         margin: {
-    //             t: 20, //top margin
-    //             l: 20, //left margin
-    //             r: 20, //right margin
-    //             b: 20 //bottom margin
-    //         }
-    //     });
+    Plotly.newPlot('topics_wrapper', data, layout,  {staticPlot:true});
 }
 
 $(document).ready(function() {
-    $('#search_table').DataTable( {
-        select: true,
-        "searching": false,
-        "columns": [
-                      { 
-                         "data": "Name",
-                         "render": function(data, type, row, meta){
-                            if(type === 'display'){
-                                data = '<a href="https://vk.com/id' + data['uid'] + '">' + data['text'] + '</a>';
-                            }
-                            
-                            return data;
-                         }
-                      },
-                      { "data": "City" },
-                      { "data": "Sex" }, 
-                      { "data": "Age" },   
+  $('#search_table').DataTable( {
+      select: true,
+      "searching": false,
+      "bInfo": false,
+      "lengthChange": false,
+      "columns": [
+                    { 
+                       "data": "Name",
+                       "render": function(data, type, row, meta){
+                          if(type === 'display'){
+                              data = '<a href="https://vk.com/id' + data['uid'] + '">' + data['text'] + '</a>';
+                          }
+                          
+                          return data;
+                       }
+                    },
+                    { "data": "City" },
+                    { "data": "Sex" }, 
+                    { "data": "Age" },   
 
-                   ]
-    } );
+                 ]
+  });
 
-    $('#search_table').on('click', 'tbody tr', function(event) {
-        $(this).addClass('highlight').siblings().removeClass('highlight')
-        plot_topics($(this).index());
-    });
+  $('#search_table').on('click', 'tbody tr', function(event) {
+      $(this).addClass('highlight').siblings().removeClass('highlight')
+      plot_topics($(this).index());
+  });
 });
 
 $("#query_submit_btn").on("click", function () 
@@ -120,9 +105,9 @@ $("#query_submit_btn").on("click", function ()
                 $("#search_div").show();
             }
             add_search_results(JSON.parse(data))
-            // console.log(JSON.parse(data))
       },
-      error: function(XMLHttpRequest, textStatus, errorThrown) { 
+      error: function(XMLHttpRequest, textStatus, errorThrown) 
+      { 
         alert("Status: " + textStatus); alert("Error: " + errorThrown); 
       }  
     });

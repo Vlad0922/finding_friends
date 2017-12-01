@@ -3,13 +3,41 @@
   background-size: auto 100%;
 }
 
-#search_div {
-    margin-left: 5%;
-}
-
 #topics_wrapper {
     min-height:100%;
     height:100%
 }
 
-.table-striped tbody tr.highlight td { background-color: rgba(80, 200, 180, 0.3); }
+#footer_text {
+	text-align: right;
+	margin-right: 5%;
+}
+
+#global_div
+{
+	margin-auto;
+}
+
+#search_div 
+{
+	margin-left: 5%;
+}
+
+#filter_div
+{
+	margin-top: 10px;
+	margin-bottom: 10px;
+	position: relative;
+    right: 0px;
+}
+
+#query_container
+{
+	margin: auto;
+	position: relative;
+    right: 0px;
+}
+
+.table-striped tbody tr.highlight td { 
+	background-color: rgba(80, 200, 180, 0.3); 
+}
