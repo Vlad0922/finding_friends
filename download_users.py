@@ -208,10 +208,6 @@ def get_user_params():
     return params
 
 
-def get_user_ids(db, f, t):
-    return ','.join([str(user['uid']) for user in db.users.find()[f:t]])
-
-
 def load_user_info(api):
     client = MongoClient()
     db = client.ir_project
