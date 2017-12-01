@@ -7,6 +7,9 @@
     <title>Finding friends</title>
 
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <link rel="https://cdn.datatables.net/1.10.16/css/dataTables.bootstrap.min.css">
+    <!-- <link rel="https://cdn.datatables.net/select/1.2.3/css/select.bootstrap.min.css"> -->
+
 
     <link rel="stylesheet" href="/static/css/switch.css">
     <link rel="stylesheet" href="/static/css/styles.css">  
@@ -18,18 +21,18 @@
       </div>
     </div>
 
-    <form>
+    <!-- <form> -->
       <div class="container">
         <div class="input-group">
-          <input type="text" class="form-control" placeholder="Search query or user link">
+          <input type="text" class="form-control" placeholder="Search query or user link" id="query_text">
           <div class="input-group-btn">
-            <button class="btn btn-default" type="submit">
+            <button class="btn btn-default" id="query_submit_btn">
               <i class="glyphicon glyphicon-search"></i>
             </button>
           </div>
         </div>
       </div>
-    </form>
+    <!-- </form> -->
 
     <div id="filter_div" class = "container">
       <div class="container">
@@ -77,6 +80,25 @@
       </div>
     </div>
 
+    <div id="search_div" style="display:none" class="row">
+      <div class="col-xs-6">
+        <table id="search_table" class="table table-striped table-bordered" cellspacing="0" width="100%">
+          <thead>
+              <tr>
+                  <th>Name</th>
+                  <th>City</th>
+                  <th>Sex</th>
+                  <th>Age</th>
+              </tr>
+          </thead>
+        </table>
+      </div>
+      <div class="col-xs-6">
+        <div id="topics_wrapper">
+        </div>
+      </div>
+    </div>
+
     <footer>
       <p>&copy; Myrov Vladislav and Sosin Ivan, 2017, https://github.com/Vlad0922/finding_friends</p>
     </footer>
@@ -84,6 +106,13 @@
     <!-- libraries -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <script src="https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.16/js/dataTables.bootstrap.min.js"></script>
+
+    <!-- <script src="https://d3js.org/d3.v4.min.js"></script> -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- <srcipt src="https://cdn.datatables.net/select/1.2.3/js/dataTables.select.min.js"></srcipt> -->
 
 
    <!--  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.3.6/proj4.js"></script>
