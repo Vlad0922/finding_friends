@@ -3,6 +3,11 @@ from nltk.tokenize import RegexpTokenizer
 
 from pymorphy2 import MorphAnalyzer
 
+import pickle
+
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
+
 
 def read_stops():
     res = set()
