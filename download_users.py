@@ -245,9 +245,9 @@ def main(args):
     # auth_params = get_auth_params()
     # session = vk.AuthSession(**auth_params)
 
-    # session = vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781')
+    session = vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781')
     # session = vk.Session(access_token='4e7ce4b1170e7c875ea1f1cc41659f9b63c33d0bfd5308b0a45777d3dcccc6fee851ce05da44edd61cb67') # 17:02
-    session = vk.Session(access_token='bbcfebc68e9dc9a3decbb543d4fd6a143fbc19b95137b0be413c882993c801820002a9f8a15e015091efb') # 17:00
+    # session = vk.Session(access_token='bbcfebc68e9dc9a3decbb543d4fd6a143fbc19b95137b0be413c882993c801820002a9f8a15e015091efb') # 17:00
 
     api = vk.API(session, timeout=60)
 
