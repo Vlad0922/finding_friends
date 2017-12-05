@@ -19,15 +19,18 @@ from gensim.models.doc2vec import TaggedDocument
 from collections import Counter
 
 
+from utility import Stemmizer
+
+s = Stemmizer()
+
 class Index:
     def __init__(self, db):
         self.db = db
         self.mutex = Lock()
         self.pool = Pool(processes=1)
         self.ids_indices_dict = Index.create_or_load_ids_dict(self.db)
-        # self.reverse_index = defaultdict(set)
         self.reverse_index = defaultdict(Counter)
-
+        self.dl = dict()
 
         self.forward_index = db.forward_index
         self.morpher = MorphAnalyzer()
@@ -46,6 +49,9 @@ class Index:
 
         with open('reverse_index.pickle', 'wb') as handle:
             pickle.dump(self.reverse_index, handle)
+
+        with open('doc_length.pickle', 'wb') as handle:
+            pickle.dump(self.dl, handle)
 
     def create_or_load_users_to_posts(self):
         if os.path.exists('users_to_posts.pickle'):
@@ -76,7 +82,6 @@ class Index:
             pickle.dump(self.reverse_index, handle)
 
     def update_reverse(self, token, index):
-        # self.reverse_index[token].add(index)
         self.reverse_index[token][index] += 1
 
     def get_reverse_index(self):
@@ -133,28 +138,14 @@ class Index:
 
         text += self.users_to_posts[self.ids_indices_dict[uid]]
 
-        def stemming(text):
-            # Removing punctuation, numbers and processing to lower case
-
-            text = re.sub('[^а-яА-Яa-zA-Z\s]', '', text).lower()
-            words = text.split()
-
-            # Removing stop words
-            russian_stopwords = set(stopwords.words('russian'))
-            english_stopwords = set(stopwords.words('english'))
-
-            stops = set.intersection(russian_stopwords, english_stopwords)
-
-            words = [self.morpher.parse(word)[0].normal_form for word in words if not word in stops]
-            return ' '.join(words)
-
-        text = stemming(text)
+        text = s.process(text)
 
         self.forward_index.insert_one({'uid': uid, 'text': text})
 
         splitted = text.split()
 
         self.mutex.acquire()
+        self.dl[self.ids_indices_dict[uid]] = len(splitted)
         for token in splitted:
             self.update_reverse(token, self.ids_indices_dict[uid])
         self.pbar.update(1)
@@ -164,17 +155,33 @@ class Index:
 def build_doc2vec(db):
     cores = multiprocessing.cpu_count()
     assert gensim.models.doc2vec.FAST_VERSION > -1, "This will be painfully slow otherwise"
+    #
+    # forward_index = db.forward_index
+    #
+    # ids_indices_dict = Index.create_or_load_ids_dict(db)
+    #
+    # documents = []
+    #
+    # for id_text in forward_index.find():
+    #     documents.append(TaggedDocument(id_text['text'].split(), [ids_indices_dict[id_text['uid']]]))
+    with open('doc.txt', 'r') as handle:
+        lines = handle.readlines()
+        print(len(lines))
+        lines = ' '.join(lines)
+        lines = lines.split()
 
-    forward_index = db.forward_index
+        i = 0
+        docs = []
+        while i < len(lines):
+            docs.append(lines[i: i + 20])
+            i += 20
 
-    ids_indices_dict = Index.create_or_load_ids_dict(db)
-
-    documents = []
-
-    for id_text in forward_index.find():
-        documents.append(TaggedDocument(id_text['text'].split(), [ids_indices_dict[id_text['uid']]]))
+        documents = [TaggedDocument(doc, 'sent{}'.format(index)) for (index, doc) in enumerate(docs)]
 
     model = Doc2Vec(documents, size=100, window=10, min_count=5, workers=cores)
+
+    # for epoch in range(10):
+    #     model.train(documents[epoch], total_words=1000, epochs=10)
 
     model.save('forward_index.doc2vec')
 
@@ -186,9 +193,11 @@ def main(args):
     index = Index(db=db)
 
     index.build_forward_and_reverse()
-    
-    if args.doc2vec:
-        build_doc2vec(db)
+
+    # db = None
+    #
+    # if args.doc2vec:
+    #     build_doc2vec(db)
 
 
 if __name__ == '__main__':

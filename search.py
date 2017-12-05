@@ -11,22 +11,11 @@ from nltk.corpus import stopwords
 from collections import Counter
 from pymorphy2 import MorphAnalyzer
 
+from utility import Stemmizer
 
 class Searcher:
     def stemming(self, text):
-        # Removing punctuation, numbers and processing to lower case
-
-        text = re.sub('[^а-яА-Яa-zA-Z\s]', '', text).lower()
-        words = text.split()
-
-        # Removing stop words
-        russian_stopwords = set(stopwords.words('russian'))
-        english_stopwords = set(stopwords.words('english'))
-
-        stops = set.intersection(russian_stopwords, english_stopwords)
-
-        words = [self.morpher.parse(word)[0].normal_form for word in words if not word in stops]
-        return ' '.join(words)
+        return self.s.process(text)
 
 
 class BM25(Searcher):
@@ -39,13 +28,15 @@ class BM25(Searcher):
         self.k1 = 1.5
         self.b = 0.75
         self.morpher = MorphAnalyzer()
+        self.s = Stemmizer()
+        
 
         self.load()
 
         self.N = len(self.dl)
         self.d_avg = sum(list(self.dl.values())) / self.N
 
-    def search(self, query, num, verbose=True):
+    def search(self, query, num, verbose=True, with_scores=False):
         stemmed_query = self.stemming(query).split()
 
         self.bm25 = Counter()
@@ -58,7 +49,10 @@ class BM25(Searcher):
             for (uid, rank) in most_wanted:
                 print('rank: {0:3.3f} https://vk.com/id{1}'.format(rank, uid))
 
-        return [uid for (uid, _) in most_wanted]
+        if with_scores:
+            return most_wanted
+        else:
+            return [uid for (uid, _) in most_wanted]
 
     def update_bm25(self, token):
         if token in self.reverse_index:
@@ -95,6 +89,7 @@ class BM25(Searcher):
 class Doc2vecSearcher(Searcher):
     def __init__(self):
         self.model = Doc2Vec.load('forward_index.doc2vec')
+        self.s = Stemmizer()
 
     def search(self, query, n_results, verbose=True):
         new_vector = self.model.infer_vector(query)
@@ -177,8 +172,52 @@ def main(args):
         if go_on == 'Yes' or go_on == 'yes':
             query = input('give a new query: ')
             continue
-
         break
+
+
+class SearchEngine:
+    def __init__(self, db):
+        self.bm25 = None
+        self.doc2vec_searcher = None
+        self.db = db
+
+    def search(self, method, mode, query, max_num_of_results, gender, age_range, city):
+        if method == 'BM25':
+            if not self.bm25:
+                self.bm25 = BM25()
+            searcher = self.bm25
+        elif method == 'doc2vec':
+            if not self.doc2vec_searcher:
+                self.doc2vec_searcher = Doc2vecSearcher()
+            searcher = self.doc2vec_searcher
+        else:
+            raise ValueError('unknown method. Only BM25 and doc2vec are supported')
+
+        if mode == 'recommend':
+            query_processed = searcher.stemming(download_users.get_user_info(query))
+        else:
+            query_processed = searcher.stemming(query)
+
+        # satisfactory_uids = [user['uid'] for user in
+        #                      self.db.users.find({
+        #                         '$and': [
+        #                             {'gender': gender}, {'city': city},
+        #                             {'age': {'$gte': age_range[0], '$lte': age_range[1]}}
+        #                         ]
+        #                     })]
+
+        while True:
+            ids = searcher.search(query_processed, max_num_of_results, verbose=False, with_scores=True)
+
+            # filtered_ids = [uid for uid in ids if uid in satisfactory_uids]
+            filtered_ids = ids
+
+            if len(filtered_ids) == max_num_of_results:
+                return filtered_ids
+            elif max_num_of_results >= len(satisfactory_uids):
+                return filtered_ids
+
+            max_num_of_results *= 4
 
 
 if __name__ == '__main__':

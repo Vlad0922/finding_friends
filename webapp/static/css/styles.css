@@ -38,6 +38,8 @@
     right: 0px;
 }
 
+td { white-space:pre }
+
 .table-striped tbody tr.highlight td { 
 	background-color: rgba(80, 200, 180, 0.3); 
 }

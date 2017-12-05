@@ -1,5 +1,19 @@
 var topics = [];
 
+
+
+if (!String.format) {
+  String.format = function(format) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return format.replace(/{(\d+)}/g, function(match, number) { 
+      return typeof args[number] != 'undefined'
+        ? args[number] 
+        : match
+      ;
+    });
+  };
+}
+
 function add_search_results(data)
 {
     Plotly.purge('topics_wrapper');
@@ -15,10 +29,17 @@ function add_search_results(data)
 
         topics.push(person['topics']);
 
-        table.row.add({'Name': {'text': person['first_name'] + ' ' + person['last_name'], 'uid':person['uid']},
-                    'Age':person['age'],
-                    'City': person['city'],
-                    'Sex':person['sex']}).draw()
+        table.row.add({
+                        'Information': {
+                                        'text': person['first_name'] + ' ' + person['last_name'], 
+                                        'uid':person['uid'], 
+                                        'city':person['city'], 
+                                        'age':person['age'], 
+                                        'sex':person['sex']
+                                        },                        
+                        'Photo': {'photo':person['photo']},
+                        'Score': person['score'], 
+                    }).draw()
     }    
 }
 
@@ -60,20 +81,30 @@ $(document).ready(function() {
       "bInfo": false,
       "lengthChange": false,
       "columns": [
+                    {"data" : "Score"},
+                    {
+                        "data" : "Photo",
+                        "render": function(data, type, row, meta){
+                            return '<img height="100px" src="'+ data['photo'] +'"/>';
+                        }
+                    },
                     { 
-                       "data": "Name",
-                       "render": function(data, type, row, meta){
-                          if(type === 'display'){
-                              data = '<a href="https://vk.com/id' + data['uid'] + '">' + data['text'] + '</a>';
-                          }
-                          
-                          return data;
+                       "data": "Information",
+                       "render": function(data, type, row, meta)
+                       {                            
+                            txt = '<a href="https://vk.com/id' + data['uid'] + '">' + data['text'] + '</a>\n';
+                            txt += String.format('Gender: {0}\n', data['sex']);
+                            txt += String.format('City: {0}\n', data['city']);
+                            txt += String.format('Age: {0}\n', data['age']);
+                      
+                            return txt;
                        }
                     },
-                    { "data": "City" },
-                    { "data": "Sex" }, 
-                    { "data": "Age" },   
-
+                    { 
+                        "data": "Feedback",
+                        "render": function(data, type, row, meta){
+                            return '<img height="25px" src="static/smiles_2.png"/>';
+                        }}
                  ]
   });
 
