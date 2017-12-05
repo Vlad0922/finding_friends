@@ -221,15 +221,23 @@ def load_user_info(api):
     current_ids = list(all_ids - downloaded_ids)
     batch_size = 1000
 
+    empty_counter = 0
+
     for i in tqdm.trange(0, len(current_ids), batch_size, desc='Loading users info...'):
         users = current_ids[i:i+batch_size]
         try:
             result = api.users.get(**user_params, user_ids=users)
-
-            db.user_info.insert_many(result)
             
             if all([r == False for r in result]):
                 print('empty result...')
+                empty_counter += 1
+            else:
+                db.user_info.insert_many(result)
+                empty_counter = 0
+
+            if empty_counter >= 3:
+                break
+    
         except Exception as e:
             print(e)
 
@@ -247,17 +255,6 @@ def main(args):
 
     api = vk.API(session, timeout=60)
 
-    # wall_params = get_wall_params()
-
-    # code = create_wall_execute_code(wall_params, id_list=[1,2,3])
-    # result = api.execute(code=code, timeout=60)
-    # filtered = [filter_wall_query(q) for q in result]
-
-    # print(filtered)
-
-    # exit(1)
-
-    print
     if args.users:
         load_users(api)
 
