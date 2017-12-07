@@ -164,11 +164,14 @@ def load_wall_posts(api):
     db = client.ir_project
 
     wall_params = get_wall_params()
-    all_ids = set([u['uid'] for u in db.users.find()])
+    all_ids = set([u['uid'] for u in db.users.find({'sex': 1, 'age': {'$lte': 30}})])
+    # all_ids = set([u['uid'] for u in db.users.find()])
     downloaded_ids = set([u['uid'] for u in db.wall_posts.find()])
 
     current_ids = list(all_ids - downloaded_ids)
     batch_size = 25
+
+    empty_counter = 0
 
     for i in tqdm.trange(0, len(current_ids), batch_size, desc='Loading wall_posts...'):
         users = current_ids[i:i+batch_size]
@@ -178,11 +181,18 @@ def load_wall_posts(api):
 
             if all([r == False for r in result]):
                 print('empty query...')
+                empty_counter += 1
             else:   
                 filtered = [filter_wall_query(q) for q in result]
                 db_query = [{'uid': idx, 'posts': p} for (idx, p) in zip(users, filtered)]
 
                 db.wall_posts.insert_many(db_query)
+
+                empty_counter = 0
+
+            if empty_counter >= 3:
+                break
+                    
         except Exception as e:
             print(e)
 
@@ -215,7 +225,8 @@ def load_user_info(api):
     user_params = get_user_params()
     total_users = db.users.count()
 
-    all_ids = set([u['uid'] for u in db.users.find()])
+    # all_ids = set([u['uid'] for u in db.users.find()])
+    all_ids = set([u['uid'] for u in db.users.find({'$and': [{'gender': 1}, {'age': {'$lte': 30}}]})])
     downloaded_ids = set([u['uid'] for u in db.user_info.find()])
 
     current_ids = list(all_ids - downloaded_ids)
@@ -237,7 +248,7 @@ def load_user_info(api):
 
             if empty_counter >= 3:
                 break
-    
+
         except Exception as e:
             print(e)
 
@@ -246,12 +257,10 @@ def load_user_info(api):
 
 
 def main(args):
-    # auth_params = get_auth_params()
-    # session = vk.AuthSession(**auth_params)
+    auth_params = get_auth_params()
+    session = vk.AuthSession(**auth_params)
 
-    session = vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781')
-    # session = vk.Session(access_token='4e7ce4b1170e7c875ea1f1cc41659f9b63c33d0bfd5308b0a45777d3dcccc6fee851ce05da44edd61cb67') # 17:02
-    # session = vk.Session(access_token='bbcfebc68e9dc9a3decbb543d4fd6a143fbc19b95137b0be413c882993c801820002a9f8a15e015091efb') # 17:00
+    session = vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781') #vlad
 
     api = vk.API(session, timeout=60)
 
@@ -280,3 +289,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
+
