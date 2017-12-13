@@ -77,7 +77,7 @@ class Crawler(object):
 
     def _load_page(self, url):
         d = tldextract.extract(url).domain
-        page = urllib.request.urlopen(url)
+        page = urllib.request.urlopen(url, timeout=5)
         content = page.read().decode(page.headers.get_content_charset())
         soup = BeautifulSoup(content, 'lxml')
 
@@ -97,9 +97,9 @@ class Crawler(object):
             self.db.links_content.insert_many(self.result)
             self.result = list()
 
-        if len(self.failed):
-            self.db.links_content.insert_many(self.failed)
-            self.failed = list()
+        # if len(self.failed):
+        #     self.db.links_content.insert_many(self.failed)
+        #     self.failed = list()
 
 
     def _links_worker(self, url):
@@ -110,16 +110,16 @@ class Crawler(object):
 
             if status == 'ok':
                 self.result.append(content)
-            else:
-                self.failed.append(content)
+            # else:
+                # self.failed.append(content)
 
             if len(self.result) > self.max_list_len:
                 self.db.links_content.insert_many(self.result)
                 self.result = list()
 
-            if len(self.failed) > self.max_list_len:
-                self.db.links_failed.insert_many(self.failed)
-                self.failed = list()
+            # if len(self.failed) > self.max_list_len:
+            #     self.db.links_failed.insert_many(self.failed)
+            #     self.failed = list()
 
             self.pbar.update(1)
 
