@@ -257,18 +257,28 @@ def load_user_info(api):
 
 
 def main(args):
-    auth_params = get_auth_params()
-    session = vk.AuthSession(**auth_params)
+    # auth_params = get_auth_params()
+    sessions = [vk.AuthSession(**get_auth_params()), 
+                vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781'), #vlad
+                vk.Session(access_token='1361403386a3b0b48437556596e8500446c16701141f5fe5e1727a1a9025bc36246092b7c500d315711d6'), #ivan
+                ]
 
-    session = vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781') #vlad
+    # session = vk.AuthSession(**get_auth_params())
+    # session = vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781') #vlad
 
-    api = vk.API(session, timeout=60)
+    api = vk.API(sessions[0], timeout=60)
 
     if args.users:
         load_users(api)
 
     if args.wall_posts:
-        load_wall_posts(api)
+        for s in sessions:
+            try:
+                print('changing session...')
+                api_w = vk.API(s, timeout=60)
+                load_wall_posts(api_w)
+            except:
+                continue
 
     if args.user_info:
         load_user_info(api)
