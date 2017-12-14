@@ -61,7 +61,8 @@ class Index:
         users_to_posts = defaultdict(str)
 
         for user_post in tqdm.tqdm(self.db.wall_posts.find(), total=self.db.wall_posts.count()):
-            users_to_posts[self.ids_indices_dict[user_post['from_id']]] += user_post['text']
+            for p in user_post['posts']:
+                users_to_posts[self.ids_indices_dict[user_post['uid']]] += p['text']
 
         with open('users_to_posts.pickle', 'wb') as handle:
             pickle.dump(users_to_posts, handle)
