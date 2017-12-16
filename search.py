@@ -3,45 +3,53 @@ import time
 import argparse
 import pickle
 import os
-import re
 import math
+import tqdm
 
 from gensim.models import Doc2Vec
-from nltk.corpus import stopwords
 from collections import Counter
-from pymorphy2 import MorphAnalyzer
 
-from utility import Stemmizer
-
-class Searcher:
-    def stemming(self, text):
-        return self.s.process(text)
+from utils import IndexFiles, Stemmer
 
 
-class BM25(Searcher):
+class BM25:
     def __init__(self):
         self.reverse_index = None
-        self.ids_indices_dict = None
         self.dl = None
         self.df = None
         self.bm25 = None
+
         self.k1 = 1.5
         self.b = 0.75
-        self.morpher = MorphAnalyzer()
-        self.s = Stemmizer()
-        self.load()
+
+        self.stemmer = Stemmer()
+
+        self.load_data()
 
         self.N = len(self.dl)
         self.d_avg = sum(list(self.dl.values())) / self.N
 
+    def load_data(self):
+        self.reverse_index = IndexFiles.load(IndexFiles.REVERSE_INDEX)
+        for index, token in enumerate(self.reverse_index):
+            print(token)
+            if index == 100:
+                break
+
+        self.dl = IndexFiles.load(IndexFiles.DOC_LENGTH)
+        if os.path.exists(IndexFiles.DOC_FREQS):
+            self.df = IndexFiles.load(IndexFiles.DOC_FREQS)
+        else:
+            self.create_df(IndexFiles.DOC_FREQS)
+
     def search(self, query, num, verbose=True, with_scores=False):
-        stemmed_query = self.stemming(query).split()
+        stemmed_query = self.stemmer.process(query).split()
 
         self.bm25 = Counter()
         for token in stemmed_query:
             self.update_bm25(token)
 
-        most_wanted = [(self.ids_indices_dict[uid], rank) for (uid, rank) in self.bm25.most_common(num)]
+        most_wanted = [(uid, rank) for (uid, rank) in self.bm25.most_common(num)]
 
         if verbose:
             for (uid, rank) in most_wanted:
@@ -60,34 +68,23 @@ class BM25(Searcher):
                              (self.k1 * ((1 - self.b) + self.b * (self.dl[doc] / self.d_avg)) + tf)
                 self.bm25[doc] += bm25_token
 
-    def load(self):
-        self.reverse_index = BM25.load_pickle('reverse_index.pickle')
-        self.ids_indices_dict = BM25.load_pickle('ids_indices_dict.pickle')
-        self.dl = BM25.load_pickle('doc_length.pickle')
-        if os.path.exists('doc_freqs.pickle'):
-            self.df = BM25.load_pickle('doc_freqs.pickle')
-        else:
-            self.create_df('doc_freqs.pickle')
-
-    @staticmethod
-    def load_pickle(filename):
-        with open(filename, 'rb') as handle:
-            return pickle.load(handle)
-
     def create_df(self, filename):
+
+        print('Building doc frequencies:')
+
         self.df = Counter()
-        for token in self.reverse_index:
-            for doc in self.reverse_index[token]:
-                self.df[token] += self.reverse_index[token][doc]
 
-        with open(filename, 'wb') as handle:
-            pickle.dump(self.df, handle)
+        for token in tqdm.tqdm(self.reverse_index, total=len(self.reverse_index)):
+            for uid in self.reverse_index[token]:
+                self.df[token] += self.reverse_index[token][uid]
+
+        IndexFiles.dump(filename, self.df)
 
 
-class Doc2vecSearcher(Searcher):
+class Doc2vecSearcher:
     def __init__(self):
         self.model = Doc2Vec.load('forward_index.doc2vec')
-        self.s = Stemmizer()
+        self.s = Stemmer()
 
     def search(self, query, n_results, verbose=True):
         new_vector = self.model.infer_vector(query)
@@ -145,7 +142,8 @@ def main(args):
         id = int(input('please give us your vk id '))
         query = searcher.stemming(download_users.get_user_info(id))
     else:
-        query = searcher.stemming(args.query)
+        # query = searcher.stemming(args.query)
+        query = args.query
 
     while True:
         ids = searcher.search(query, n_results)
