@@ -1,10 +1,39 @@
 import pickle
 import json
+import ujson
+import time
+import subprocess
+
 from pymorphy2 import MorphAnalyzer
 from nltk.corpus import stopwords
-from nltk.tokenize import RegexpTokenizer
+from nltk.tokenize import RegexpTokenizer, TweetTokenizer
 from os import listdir
 from os.path import isfile, join
+
+
+class MongoManager:
+    def __enter__(self):
+        subprocess.run('sudo service mongod start'.split())
+        time.sleep(2)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        subprocess.run('sudo service mongod stop'.split())
+
+
+class Timer:
+    def __init__(self, op_name):
+        self.op_name = op_name
+        self.start = None
+        self.end = None
+
+    def __enter__(self):
+        print(self.op_name + ': ...')
+        self.start = time.time()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.end = time.time()
+        print('elapsed time for {0} is {1:.3f} s'.format(self.op_name.lower(),
+                                                         self.end - self.start))
 
 
 class IndexFiles:
@@ -14,6 +43,12 @@ class IndexFiles:
     REVERSE_INDEX = 'reverse_index.json'
     DOC_LENGTH = 'doc_length.json'
     DOC_FREQS = 'doc_freqs.json'
+    USER_INFOS = 'user_infos.json'
+
+    @staticmethod
+    def load_fast_json(filename):
+        with open(filename, 'r') as handle:
+            return ujson.load(handle)
 
     @staticmethod
     def load(filename):
@@ -71,7 +106,9 @@ class Stemmer:
                         'vkontakte', 'd1', 'd0', 'amp', 'utm_source',  'utm_medium', 'utm_campaign'}
 
         self.stops = russian_stopwords | english_stopwords | custom_stops | self.custom_stops()
-        self.tokenizer = RegexpTokenizer(r'\w+')
+        # self.tokenizer = RegexpTokenizer(r'\w+')
+        self.tokenizer = TweetTokenizer()
+
         self.cache = dict()
 
     @staticmethod
