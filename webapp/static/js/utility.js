@@ -1,7 +1,6 @@
 var topics = [];
 
 
-
 if (!String.format) {
   String.format = function(format) {
     var args = Array.prototype.slice.call(arguments, 1);
@@ -124,6 +123,8 @@ $("#query_submit_btn").on("click", function ()
         return;
     }
 
+    $("body").addClass("loading");   
+
     $.ajax({
       type: 'GET',
       url: '/process_query',
@@ -136,6 +137,7 @@ $("#query_submit_btn").on("click", function ()
                 $("#search_div").show();
             }
             add_search_results(JSON.parse(data))
+            $("body").removeClass("loading");
       },
       error: function(XMLHttpRequest, textStatus, errorThrown) 
       { 

@@ -18,7 +18,7 @@ from search import SearchEngine
 
 app = Flask('Finding friends app')
 client = MongoClient()
-db = client.ir_project
+db = client.ir_project_old
 
 eng = SearchEngine(db)
 
