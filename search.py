@@ -29,8 +29,6 @@ class BM25(Searcher):
         self.b = 0.75
         self.morpher = MorphAnalyzer()
         self.s = Stemmizer()
-        
-
         self.load()
 
         self.N = len(self.dl)

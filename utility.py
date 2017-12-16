@@ -16,12 +16,12 @@ def read_stops():
             res.add(line.strip())
     return res
 
-def is_number(s):
-    try:
-        float(s)
-        return True
-    except:
-        return False
+# def is_number(s):
+#     try:
+#         float(s)
+#         return True
+#     except:
+#         return False
 
 class Stemmizer(object):
     def __init__(self):
