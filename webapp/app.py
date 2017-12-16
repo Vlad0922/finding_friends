@@ -18,7 +18,7 @@ from search import SearchEngine
 
 app = Flask('Finding friends app')
 client = MongoClient()
-db = client.ir_project
+db = client.ir_project_old
 
 eng = SearchEngine(db)
 
@@ -46,7 +46,7 @@ def get_topics(ids):
     return {u['uid']:u['topics'] for u in db.topics.find({"uid": {"$in": ids}})}
 
 
-def get_users(text, filters, count=30):
+def get_users(text, filters, count=10):
     search_res = {uid:score for uid,score in eng.search('BM25', 'search', text, 20, 1, (18, 25), 1)}
 
     res = [u for u in db.users.find({'uid': {'$in': list(search_res.keys())}})]
@@ -72,10 +72,12 @@ def get_users(text, filters, count=30):
 
 @app.route('/process_query', methods=['POST', 'GET'])
 def process_query():
+    print('processing query....')
     q = request.args.get("text")
     f = request.args
 
     res = get_users(q, f)
+    print('done!')
 
     return json.dumps(res)
 
