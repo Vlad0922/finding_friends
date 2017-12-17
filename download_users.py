@@ -128,6 +128,24 @@ def filter_wall_query(query):
     else:
         return []
 
+def filter_subscriptions_query(query):
+    if query == False:
+        return []
+    
+    def filter_single(q):
+        return {'name':q['name'], 'gid':q['gid']}
+
+    return [filter_single(q) for q in query if q['type'] == 'page']
+
+def filter_groups_query(query):
+    if query == False:
+        return []
+    
+    def filter_single(q):
+        return {'name':q['name'], 'gid':q['gid']}
+
+    return [filter_single(q) for q in query[1:] if q['type'] == 'page']
+
 
 def get_wall_params():
     params = dict()
@@ -138,13 +156,27 @@ def get_wall_params():
 
     return params
 
+def get_subscript_params():
+    params = dict()
 
-def create_wall_execute_code(params_orig, id_list):
+    params['extended'] = 1
+
+    return params
+
+def get_groups_params():
+    params = dict()
+
+    params['extended'] = 1
+
+    return params
+
+
+def create_execute_code(params_orig, id_list, method, user_field='owner_id'):
     params = list(params_orig.items())
 
     def create_single(idx):
-        c = 'API.wall.get({'
-        for p, v in (params + [('owner_id', idx)]):
+        c = 'API.{}({{'.format(method)
+        for p, v in (params + [(user_field, idx)]):
             c += '"{}" : "{}",'.format(p, v)
         c += '}),'
 
@@ -159,13 +191,90 @@ def create_wall_execute_code(params_orig, id_list):
 
 
 
+def load_subsciptions(api):
+    client = MongoClient()
+    db = client.ir_project
+
+    subscript_params = get_subscript_params()
+    all_ids = set([u['uid'] for u in db.users.find()])
+    # all_ids = set([u['uid'] for u in db.users.find({'sex': 1, 'age': {'$lte': 30}})])
+    downloaded_ids = set([u['uid'] for u in db.subscriptions.find()])
+
+    current_ids = list(all_ids - downloaded_ids)
+    batch_size = 25
+
+
+    for i in tqdm.trange(0, len(current_ids), batch_size, desc='Loading subscriptions...'):
+        users = current_ids[i:i+batch_size]
+        try:
+            code = create_execute_code(subscript_params, id_list=users, method='users.getSubscriptions', user_field='user_id')
+            result = api.execute(code=code, timeout=60)
+
+            if all([r == False for r in result]):
+                print('empty query...')
+                empty_counter += 1
+            else:   
+                filtered = [filter_subscriptions_query(q) for q in result]
+                db_query = [{'uid': idx, 'subscriptions': p} for (idx, p) in zip(users, filtered)]
+
+                db.subscriptions.insert_many(db_query)
+
+                empty_counter = 0
+
+            if empty_counter >= 3:
+                break
+                    
+        except Exception as e:
+            print(e)
+
+        time.sleep(0.4)
+
+
+def load_groups(api):
+    client = MongoClient()
+    db = client.ir_project
+
+    subscript_params = get_groups_params()
+    all_ids = set([u['uid'] for u in db.users.find()])
+    # all_ids = set([u['uid'] for u in db.users.find({'sex': 1, 'age': {'$lte': 30}})])
+    downloaded_ids = set([u['uid'] for u in db.groups.find()])
+
+    current_ids = list(all_ids - downloaded_ids)
+    batch_size = 25
+
+
+    for i in tqdm.trange(0, len(current_ids), batch_size, desc='Loading subscriptions...'):
+        users = current_ids[i:i+batch_size]
+        try:
+            code = create_execute_code(subscript_params, id_list=users, method='groups.get', user_field='user_id')
+            result = api.execute(code=code, timeout=60)
+
+            if all([r == False for r in result]):
+                print('empty query...')
+                empty_counter += 1
+            else:   
+                filtered = [filter_groups_query(q) for q in result]
+                db_query = [{'uid': idx, 'subscriptions': p} for (idx, p) in zip(users, filtered)]
+
+                db.groups.insert_many(db_query)
+
+                empty_counter = 0
+
+            if empty_counter >= 3:
+                break
+                    
+        except Exception as e:
+            print(e)
+
+        time.sleep(0.4)
+
+
 def load_wall_posts(api):
     client = MongoClient()
     db = client.ir_project
 
     wall_params = get_wall_params()
     all_ids = set([u['uid'] for u in db.users.find({'sex': 1, 'age': {'$lte': 30}})])
-    # all_ids = set([u['uid'] for u in db.users.find()])
     downloaded_ids = set([u['uid'] for u in db.wall_posts.find()])
 
     current_ids = list(all_ids - downloaded_ids)
@@ -176,7 +285,7 @@ def load_wall_posts(api):
     for i in tqdm.trange(0, len(current_ids), batch_size, desc='Loading wall_posts...'):
         users = current_ids[i:i+batch_size]
         try:
-            code = create_wall_execute_code(wall_params, id_list=users)
+            code = create_execute_code(wall_params, id_list=users, method='wall.get')
             result = api.execute(code=code, timeout=60)
 
             if all([r == False for r in result]):
@@ -196,7 +305,7 @@ def load_wall_posts(api):
         except Exception as e:
             print(e)
 
-        time.sleep(0.5)
+        time.sleep(0.4)
 
 
 def user_exists(uid):
@@ -225,8 +334,8 @@ def load_user_info(api):
     user_params = get_user_params()
     total_users = db.users.count()
 
-    # all_ids = set([u['uid'] for u in db.users.find()])
-    all_ids = set([u['uid'] for u in db.users.find({'$and': [{'gender': 1}, {'age': {'$lte': 30}}]})])
+    all_ids = set([u['uid'] for u in db.users.find()])
+    # all_ids = set([u['uid'] for u in db.users.find({'$and': [{'gender': 1}, {'age': {'$lte': 30}}]})])
     downloaded_ids = set([u['uid'] for u in db.user_info.find()])
 
     current_ids = list(all_ids - downloaded_ids)
@@ -263,10 +372,20 @@ def main(args):
                 vk.Session(access_token='1361403386a3b0b48437556596e8500446c16701141f5fe5e1727a1a9025bc36246092b7c500d315711d6'), #ivan
                 ]
 
-    # session = vk.AuthSession(**get_auth_params())
-    # session = vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781') #vlad
 
-    api = vk.API(sessions[0], timeout=60)
+    # api = vk.API(sessions[0])
+    # client = MongoClient()
+    # db = client.ir_project
+
+    # subscript_params = get_groups_params()
+
+    # code = create_execute_code(subscript_params, id_list=[1,2], method='groups.get', user_field='user_id')
+    # result = api.execute(code=code, timeout=60)
+
+    # print(len(result))
+
+
+
 
     if args.users:
         load_users(api)
@@ -277,6 +396,24 @@ def main(args):
                 print('changing session...')
                 api_w = vk.API(s, timeout=60)
                 load_wall_posts(api_w)
+            except:
+                continue
+
+    if args.subscriptions:
+        for s in sessions:
+            try:
+                print('changing session...')
+                api = vk.API(s, timeout=60)
+                load_subsciptions(api)
+            except:
+                continue
+
+    if args.groups:
+        for s in sessions:
+            try:
+                print('changing session...')
+                api_w = vk.API(s, timeout=60)
+                load_groups(api_w)
             except:
                 continue
 
@@ -295,8 +432,11 @@ if __name__ == '__main__':
                         help='Download user info?')
     parser.add_argument('--filter_wall', action='store_true', default=False,
                         help='Shall I filter response for the wall query?')
+    parser.add_argument('--subscriptions', action='store_true', default=False,
+                    help='Shall I load subscriptions?')
+    parser.add_argument('--groups', action='store_true', default=False,
+                help='Shall I load groups?')
 
     args = parser.parse_args()
 
     main(args)
-
