@@ -152,10 +152,11 @@ def main(args):
         query = args.query
 
     print(query)
+    n_results = args.n_results
 
     while True:
         uids = searcher.search(args.method, args.mode, query,
-                               args.n_results, args.gender,
+                               n_results, args.gender,
                                args.city, args.age_from, args.age_to)
 
         feedback = input('do you wish to leave feedback? ')
