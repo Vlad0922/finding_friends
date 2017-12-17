@@ -19,6 +19,10 @@ fields_to_left = ['text']
 attach_fields = ['text', 'title', 'description']
 
 
+def get_user_info(uid):
+    return ''
+
+
 def dictproduct(dct):
     for t in itertools.product(*dct.values()):
         yield dict(zip(dct.keys(), t))
@@ -156,7 +160,6 @@ def create_wall_execute_code(params_orig, id_list):
     code += '];'
 
     return code
-
 
 
 def load_wall_posts(api):

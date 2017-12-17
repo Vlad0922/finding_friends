@@ -3,47 +3,52 @@ import time
 import argparse
 import pickle
 import os
-import re
 import math
+import tqdm
 
 from gensim.models import Doc2Vec
-from nltk.corpus import stopwords
 from collections import Counter
-from pymorphy2 import MorphAnalyzer
 
-from utility import Stemmizer
-
-class Searcher:
-    def stemming(self, text):
-        return self.s.process(text)
+from utils import IndexFiles, Stemmer, Timer
 
 
-class BM25(Searcher):
+class BM25:
     def __init__(self):
         self.reverse_index = None
-        self.ids_indices_dict = None
-        self.dl = None
-        self.df = None
+        self.doc_lengths = None
+        self.token_freqs = None
+        self.user_infos = None
         self.bm25 = None
         self.k1 = 1.5
         self.b = 0.75
-        self.morpher = MorphAnalyzer()
-        self.s = Stemmizer()
-        
+        self.stemmer = Stemmer()
+        self.load_data()
+        self.N = len(self.doc_lengths)
+        self.avg_length = sum(list(self.doc_lengths.values())) / self.N
 
-        self.load()
+    def load_data(self):
+        with Timer('Loading bm25 files'):
+            self.reverse_index = IndexFiles.load(IndexFiles.REVERSE_INDEX)
+            self.doc_lengths = IndexFiles.load(IndexFiles.DOC_LENGTH)
+            self.token_freqs = IndexFiles.load(IndexFiles.DOC_FREQS)
+            self.user_infos = IndexFiles.load(IndexFiles.USER_INFOS)
 
-        self.N = len(self.dl)
-        self.d_avg = sum(list(self.dl.values())) / self.N
-
-    def search(self, query, num, verbose=True, with_scores=False):
-        stemmed_query = self.stemming(query).split()
+    def search(self, query, num, gender, city, age_from, age_to, verbose=True, with_scores=False):
+        stemmed_query = self.stemmer.process(query).split()
 
         self.bm25 = Counter()
         for token in stemmed_query:
             self.update_bm25(token)
 
-        most_wanted = [(self.ids_indices_dict[uid], rank) for (uid, rank) in self.bm25.most_common(num)]
+        for uid in self.user_infos:
+            if self.user_infos[uid]['sex'] != gender or \
+                    self.user_infos[uid]['city'] != city or \
+                    self.user_infos[uid]['age'] < age_from or \
+                    self.user_infos[uid]['age'] > age_to:
+
+                del self.bm25[uid]
+
+        most_wanted = [(uid, rank) for (uid, rank) in self.bm25.most_common(num)]
 
         if verbose:
             for (uid, rank) in most_wanted:
@@ -58,38 +63,15 @@ class BM25(Searcher):
         if token in self.reverse_index:
             for doc in self.reverse_index[token]:
                 tf = self.reverse_index[token][doc]
-                bm25_token = math.log(self.N / self.df[token]) * ((self.k1 + 1) * tf) / \
-                             (self.k1 * ((1 - self.b) + self.b * (self.dl[doc] / self.d_avg)) + tf)
+                bm25_token = math.log(self.N / self.token_freqs[token]) * ((self.k1 + 1) * tf) / \
+                             (self.k1 * ((1 - self.b) + self.b * (self.doc_lengths[doc] / self.avg_length)) + tf)
                 self.bm25[doc] += bm25_token
 
-    def load(self):
-        self.reverse_index = BM25.load_pickle('reverse_index.pickle')
-        self.ids_indices_dict = BM25.load_pickle('ids_indices_dict.pickle')
-        self.dl = BM25.load_pickle('doc_length.pickle')
-        if os.path.exists('doc_freqs.pickle'):
-            self.df = BM25.load_pickle('doc_freqs.pickle')
-        else:
-            self.create_df('doc_freqs.pickle')
 
-    @staticmethod
-    def load_pickle(filename):
-        with open(filename, 'rb') as handle:
-            return pickle.load(handle)
-
-    def create_df(self, filename):
-        self.df = Counter()
-        for token in self.reverse_index:
-            for doc in self.reverse_index[token]:
-                self.df[token] += self.reverse_index[token][doc]
-
-        with open(filename, 'wb') as handle:
-            pickle.dump(self.df, handle)
-
-
-class Doc2vecSearcher(Searcher):
+class Doc2vecSearcher:
     def __init__(self):
         self.model = Doc2Vec.load('forward_index.doc2vec')
-        self.s = Stemmizer()
+        self.s = Stemmer()
 
     def search(self, query, n_results, verbose=True):
         new_vector = self.model.infer_vector(query)
@@ -133,55 +115,12 @@ class FeedBack:
             pickle.dump(cont, handle)
 
 
-def main(args):
-    if args.method == 'BM25':
-        searcher = BM25()
-    elif args.method == 'doc2vec':
-        searcher = Doc2vecSearcher()
-    else:
-        raise ValueError('unknown method. Only BM25 and doc2vec are supported')
-
-    n_results = args.n_results
-
-    if args.mode == 'recommend':
-        id = int(input('please give us your vk id '))
-        query = searcher.stemming(download_users.get_user_info(id))
-    else:
-        query = searcher.stemming(args.query)
-
-    while True:
-        ids = searcher.search(query, n_results)
-
-        feedback = input('do you wish to leave feedback? ')
-
-        if feedback == 'Yes' or feedback == 'yes':
-            if args.mode == 'search':
-                feed = FeedBack(args.mode, query, ids, 'feedback.pickle')
-            elif args.mode == 'recommendation':
-                feed = FeedBack(args.mode, id, ids, 'feedback.pickle')
-            feed.get_feedback()
-
-        change_number = input('do you wish to change number of results? ')
-
-        if change_number == 'Yes' or change_number == 'yes':
-            n_results = int(input('give a new number of results: '))
-            continue
-
-        go_on = input('do you wish to continue? ')
-
-        if go_on == 'Yes' or go_on == 'yes':
-            query = input('give a new query: ')
-            continue
-        break
-
-
 class SearchEngine:
-    def __init__(self, db):
+    def __init__(self):
         self.bm25 = None
         self.doc2vec_searcher = None
-        self.db = db
 
-    def search(self, method, mode, query, max_num_of_results, gender, age_range, city):
+    def search(self, method, mode, query, max_num_of_results, gender, city, age_from, age_to):
         if method == 'BM25':
             if not self.bm25:
                 self.bm25 = BM25()
@@ -193,31 +132,53 @@ class SearchEngine:
         else:
             raise ValueError('unknown method. Only BM25 and doc2vec are supported')
 
-        if mode == 'recommend':
-            query_processed = searcher.stemming(download_users.get_user_info(query))
-        else:
-            query_processed = searcher.stemming(query)
+        with Timer('Searching for {} users'.format(max_num_of_results)):
+            uids = searcher.search(query, max_num_of_results, gender, city,
+                                   age_from, age_to, verbose=True, with_scores=True)
 
-        # satisfactory_uids = [user['uid'] for user in
-        #                      self.db.users.find({
-        #                         '$and': [
-        #                             {'gender': gender}, {'city': city},
-        #                             {'age': {'$gte': age_range[0], '$lte': age_range[1]}}
-        #                         ]
-        #                     })]
+        return uids
 
-        while True:
-            ids = searcher.search(query_processed, max_num_of_results, verbose=False, with_scores=True)
 
-            # filtered_ids = [uid for uid in ids if uid in satisfactory_uids]
-            filtered_ids = ids
+def main(args):
+    if args.method != 'BM25' and args.method != 'doc2vec':
+        raise ValueError('unknown method. Only BM25 and doc2vec are supported')
 
-            if len(filtered_ids) == max_num_of_results:
-                return filtered_ids
-            elif max_num_of_results >= len(satisfactory_uids):
-                return filtered_ids
+    searcher = SearchEngine()
 
-            max_num_of_results *= 4
+    if args.mode == 'recommend':
+        uid = int(input('please give us your vk id '))
+        query = download_users.get_user_info(uid)
+    else:
+        query = args.query
+
+    print(query)
+
+    while True:
+        uids = searcher.search(args.method, args.mode, query,
+                               args.n_results, args.gender,
+                               args.city, args.age_from, args.age_to)
+
+        feedback = input('do you wish to leave feedback? ')
+
+        if feedback.lower() == 'yes':
+            if args.mode == 'search':
+                feed = FeedBack(args.mode, query, uids, 'feedback.pickle')
+            elif args.mode == 'recommendation':
+                feed = FeedBack(args.mode, id, uids, 'feedback.pickle')
+            feed.get_feedback()
+
+        change_number = input('do you wish to change number of results? ')
+
+        if change_number.lower() == 'yes':
+            n_results = int(input('give a new number of results: '))
+            continue
+
+        go_on = input('do you wish to continue? ')
+
+        if go_on.lower() == 'yes':
+            query = input('give a new query: ')
+            continue
+        break
 
 
 if __name__ == '__main__':
@@ -230,7 +191,15 @@ if __name__ == '__main__':
                         help='Query. If more than one word should be inside parenthesis')
     parser.add_argument('--n_results', type=int, default=10,
                         help='Number of results to show')
+    parser.add_argument('--gender', type=int, default=1,
+                        help='Filter by gender')
+    parser.add_argument('--city', type=int, default=2,
+                        help='Filter by city')
+    parser.add_argument('--age_from', type=int, default=18,
+                        help='Age lower bound')
+    parser.add_argument('--age_to', type=int, default=30,
+                        help='Age upper bound')
 
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
-    main(args)
+    main(arguments)

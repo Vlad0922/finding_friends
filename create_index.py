@@ -1,156 +1,251 @@
 import time
 import argparse
-import pprint
-import pickle
 import tqdm
-import re
 import os
 import gensim
 import multiprocessing
+import subprocess
+import math
 
 from pymongo import MongoClient
-from pymorphy2 import MorphAnalyzer
-from nltk.corpus import stopwords
 from collections import defaultdict
-from multiprocessing.dummy import Pool
-from threading import Lock
+from multiprocessing import Pool
 from gensim.models import Doc2Vec
 from gensim.models.doc2vec import TaggedDocument
 from collections import Counter
+from os import listdir
+from os.path import isfile, join
+from utils import IndexFiles, Stemmer, Timer, MongoManager
 
 
-from utility import Stemmizer
+class ForwardIndex:
+    CHUNK_SIZE = 25000
+    MAX_PROC = os.cpu_count()
 
-s = Stemmizer()
+    def __init__(self):
+        subprocess.run('sudo service mongod start'.split())
+        time.sleep(5)
+        client = MongoClient()
+        self.data_base = client.ir_project
 
-class Index:
-    def __init__(self, db):
-        self.db = db
-        self.mutex = Lock()
-        self.pool = Pool(processes=1)
-        self.ids_indices_dict = Index.create_or_load_ids_dict(self.db)
-        self.reverse_index = defaultdict(Counter)
-        self.dl = dict()
+    def build(self):
+        self.build_raws(IndexFiles.TMP_DIR, IndexFiles.RAW_PAT)
+        subprocess.run('sudo service mongod stop'.split())
+        ForwardIndex.clean_raws(IndexFiles.TMP_DIR)
+        ForwardIndex.merge_cleans(IndexFiles.TMP_DIR, IndexFiles.FORWARD_INDEX)
 
-        self.forward_index = db.forward_index
-        self.morpher = MorphAnalyzer()
+    def build_raws(self, directory, file_pattern):
+        uids = [user['uid'] for user in self.data_base.users.find()]
+        offset = ForwardIndex.CHUNK_SIZE
+        i = 0
 
-        total_users = self.db.users.count()
+        users_to_links = self.get_users_to_links()
+        links_to_contents = self.get_links_to_contents()
+        users_to_infos = self.get_users_to_infos()
 
-        self.pbar = tqdm.tqdm(total=total_users)
-        self.users_to_posts = None
+        while i < math.ceil(len(uids) / offset):
+            local_uids = uids[i * offset: (i + 1) * offset]
+            forward_index = self.get_users_to_posts(i, local_uids)
 
-    def build_forward_and_reverse(self):
-        uids = [user['uid'] for user in self.db.users.find()]
+            with Timer('Merging user info chunk {:03} together'.format(i)):
+                for uid in tqdm.tqdm(local_uids, total=len(local_uids)):
+                    text = ''
+                    for link in users_to_links[uid]:
+                        text += ' ' + links_to_contents[link]
+                    forward_index[uid] += ' ' + text + ' ' + users_to_infos[uid]
 
-        self.users_to_posts = self.create_or_load_users_to_posts()
+                IndexFiles.dump(directory + file_pattern.format(i), forward_index)
+                i += 1
 
-        self.pool.map(self.process_user, uids)
+    @staticmethod
+    def clean_raws(directory):
+        raw_files = [join(directory, f) for f in listdir(directory) if
+                     isfile(join(directory, f)) and 'raw' in f]
+        sizes = [os.path.getsize(file) for file in raw_files]
 
-        with open('reverse_index.pickle', 'wb') as handle:
-            pickle.dump(self.reverse_index, handle)
+        files_with_sizes = list(zip(sizes, raw_files))
+        files_with_sizes.sort(reverse=True)
 
-        with open('doc_length.pickle', 'wb') as handle:
-            pickle.dump(self.dl, handle)
+        files = [file for _, file in files_with_sizes]
 
-    def create_or_load_users_to_posts(self):
-        if os.path.exists('users_to_posts.pickle'):
-            with open('users_to_posts.pickle', 'rb') as handle:
-                return pickle.load(handle)
+        i = 0
+        offset = ForwardIndex.MAX_PROC
 
+        while i * offset < len(files):
+            with Pool() as pool:
+                pool.map(ForwardIndex.process_chunk, files[i * offset: (i + 1) * offset])
+            i += 1
+
+    @staticmethod
+    def merge_cleans(dir, filename):
+        clean_files = [join(dir, f) for f in listdir(dir) if isfile(join(dir, f)) and 'clean' in f]
+
+        forward_index = dict()
+
+        for file in clean_files:
+            tmp_index = IndexFiles.load(file)
+            forward_index.update(tmp_index)
+
+        IndexFiles.dump(filename, forward_index)
+
+    @staticmethod
+    def process_chunk(filepath):
+        stemmer = Stemmer()
+        chunk = IndexFiles.load(filepath)
+
+        for uid in chunk:
+            chunk[uid] = stemmer.process(chunk[uid])
+
+        IndexFiles.dump(filepath.replace('raw', 'clean'), chunk)
+
+    def get_users_to_posts(self, chunk_id, uids):
         users_to_posts = defaultdict(str)
 
-        for user_post in tqdm.tqdm(self.db.wall_posts.find(), total=self.db.wall_posts.count()):
-            for p in user_post['posts']:
-                users_to_posts[self.ids_indices_dict[user_post['uid']]] += p['text']
-
-        with open('users_to_posts.pickle', 'wb') as handle:
-            pickle.dump(users_to_posts, handle)
+        with Timer('Loading user chunk {:03} posts'.format(chunk_id)):
+            for user_post in tqdm.tqdm(self.data_base.wall_posts.find({'uid': {'$in': uids}}),
+                                       total=len(uids)):
+                user_text = ''
+                for p in user_post['posts']:
+                    user_text += ' ' + p['text']
+                users_to_posts[user_post['uid']] = user_text
 
         return users_to_posts
 
-    def build_reverse(self):
-        for forward in tqdm.tqdm(self.forward_index.find(), total=self.forward_index.count()):
-            splitted = forward['text'].split()
-            uid = forward['uid']
-
-            for token in splitted:
-                self.update_reverse(token, self.ids_indices_dict[uid])
-
-            self.pbar.update(1)
-
-        with open('reverse_index.pickle', 'wb') as handle:
-            pickle.dump(self.reverse_index, handle)
-
-    def update_reverse(self, token, index):
-        self.reverse_index[token][index] += 1
-
-    def get_reverse_index(self):
-        if not os.path.exists('reverse_index.pickle'):
-            raise FileExistsError('reverse index is not found')
-        with open('reverse_index.pickle', 'rb') as handle:
-            return pickle.load(handle)
-
-    def get_ids_dict(self):
-        return Index.create_or_load_ids_dict(self.db)
-
-    @staticmethod
-    def create_or_load_ids_dict(db):
-        if os.path.exists('ids_indices_dict.pickle'):
-            with open('ids_indices_dict.pickle', 'rb') as handle:
-                return pickle.load(handle)
-
-        ids = [user['uid'] for user in db.users.find()]
-        indices = list(range(len(ids)))
-
-        dictionary = dict(zip(ids, indices))
-        dictionary.update(zip(indices, ids))
-
-        with open('ids_indices_dict.pickle', 'wb') as handle:
-            pickle.dump(dictionary, handle)
-
-        return dictionary
-
-    def process_user(self, uid):
-        text = ''
+    def get_links_to_contents(self):
+        links_to_contents = defaultdict(str)
 
         def not_none(value):
             return value if value is not None else ''
 
-        for user_links in self.db.links.find({'uid': uid}):
-            for user_link in user_links['links']:
-                for link in self.db.links_content.find({'url': user_link}):
-                    if link['type'] == 'sprashivai':
-                        text += ' '.join(not_none(link['answers']))
-                    elif link['type'] == 'livejournal' or link['type'] == 'pikabu':
-                        text += not_none(link['title'])
-                        text += not_none(link['text'])
-                    elif link['type'] == 'youtube':
-                        text += not_none(link['description'])
-                        text += ' '.join(not_none(link['tags']))
-                        text += not_none(link['name'])
-                    elif link['type'] == 'ali':
-                        text += not_none(link['name'])
-                    elif link['type'] == 'ask':
-                        text += ' '.join(not_none(link['answers']))
-                    elif link['type'] == 'unknown':
-                        text += not_none(link['description'])
-                        text += not_none(link['title'])
+        with Timer('Loading link contents'):
+            for link in tqdm.tqdm(self.data_base.links_content.find(),
+                                  total=self.data_base.links_content.count()):
+                text = ''
+                if link['type'] == 'sprashivai':
+                    text += ' ' + ' '.join(not_none(link['answers']))
+                elif link['type'] == 'livejournal' or link['type'] == 'pikabu':
+                    text += ' ' + not_none(link['title'])
+                    text += ' ' + not_none(link['text'])
+                elif link['type'] == 'youtube':
+                    text += ' ' + not_none(link['description'])
+                    text += ' ' + ' '.join(not_none(link['tags']))
+                    text += ' ' + not_none(link['name'])
+                elif link['type'] == 'ali':
+                    text += ' ' + not_none(link['name'])
+                elif link['type'] == 'ask':
+                    text += ' ' + ' '.join(not_none(link['answers']))
+                elif link['type'] == 'unknown':
+                    text += ' ' + not_none(link['description'])
+                    text += ' ' + not_none(link['title'])
+                links_to_contents[link['url']] = text
 
-        text += self.users_to_posts[self.ids_indices_dict[uid]]
+        return links_to_contents
 
-        text = s.process(text)
+    def get_users_to_links(self):
+        users_to_links = defaultdict(list)
 
-        self.forward_index.insert_one({'uid': uid, 'text': text})
+        with Timer('Loading user links'):
+            for user_links in tqdm.tqdm(self.data_base.links.find(),
+                                        total=self.data_base.links.count()):
+                users_to_links[user_links['uid']].extend(user_links['links'])
 
-        splitted = text.split()
+        return users_to_links
 
-        self.mutex.acquire()
-        self.dl[self.ids_indices_dict[uid]] = len(splitted)
-        for token in splitted:
-            self.update_reverse(token, self.ids_indices_dict[uid])
-        self.pbar.update(1)
-        self.mutex.release()
+    def get_users_to_infos(self):
+        users_to_infos = defaultdict(str)
+
+        infos = ['interests', 'music', 'activities', 'movies',
+                 'tv', 'books', 'games', 'about','quotes']
+
+        with Timer('Loading user infos'):
+            for user in tqdm.tqdm(self.data_base.user_info.find(),
+                                  total=self.data_base.user_info.count()):
+
+                user = defaultdict(str, user)
+                user_text = ''
+
+                for info in infos:
+                    user_text += ' ' + user[info]
+
+                users_to_infos[user['uid']] = user_text
+
+        return users_to_infos
+
+
+class ReverseIndex:
+    def __init__(self):
+        with MongoManager():
+            client = MongoClient()
+            self.data_base = client.ir_project
+            total_users = self.data_base.users.count()
+            self.pbar = tqdm.tqdm(total=total_users)
+            self.reverse_index = defaultdict(Counter)
+            self.dl = dict()
+
+    def build(self):
+        clean_files = [join(IndexFiles.TMP_DIR, f)
+                       for f in listdir(IndexFiles.TMP_DIR)
+                       if isfile(join(IndexFiles.TMP_DIR, f)) and 'clean' in f]
+
+        for file in clean_files:
+            forward_index = IndexFiles.load(file)
+            for uid in forward_index:
+                splitted = forward_index[uid].split()
+                self.dl[uid] = len(splitted)
+                [self.update_reverse(token, uid) for token in splitted]
+                self.pbar.update(1)
+
+        IndexFiles.dump(IndexFiles.DOC_LENGTH, self.dl)
+        IndexFiles.dump(IndexFiles.REVERSE_INDEX, self.reverse_index)
+
+    def update_reverse(self, token, index):
+        self.reverse_index[token][index] += 1
+
+
+class SearchData:
+    def __init__(self):
+        client = MongoClient()
+        self.data_base = client.ir_project
+
+    def build(self):
+        SearchData.build_forward_index()
+        SearchData.build_reverse_index()
+        SearchData.build_doc_freqs()
+        self.build_user_infos()
+
+    @staticmethod
+    def build_reverse_index():
+        with Timer('Building reverse index') as t:
+            reverse_index = ReverseIndex()
+            reverse_index.build()
+
+    @staticmethod
+    def build_forward_index():
+        with Timer('Building forward index') as t:
+            forward_index = ForwardIndex()
+            forward_index.build()
+
+    @staticmethod
+    def build_doc_freqs():
+        with Timer('Building doc frequencies') as t:
+            df = Counter()
+            reverse_index = IndexFiles.load(IndexFiles.REVERSE_INDEX)
+            for token in tqdm.tqdm(reverse_index, total=len(reverse_index)):
+                for uid in reverse_index[token]:
+                    df[token] += reverse_index[token][uid]
+
+            IndexFiles.dump(IndexFiles.DOC_FREQS, df)
+
+    def build_user_infos(self):
+        with Timer('Building user infos'), MongoManager():
+            users_infos = defaultdict(dict)
+
+            for user in tqdm.tqdm(self.data_base.users.find(), total=self.data_base.users.count()):
+                users_infos[user['uid']]['sex'] = user['sex']
+                users_infos[user['uid']]['city'] = user['city']
+                users_infos[user['uid']]['age'] = user['age']
+
+            IndexFiles.dump(IndexFiles.USER_INFOS, users_infos)
 
 
 def build_doc2vec(db):
@@ -188,24 +283,30 @@ def build_doc2vec(db):
 
 
 def main(args):
-    client = MongoClient()
-    db = client.ir_project
 
-    index = Index(db=db)
+    if args.action == 'build_forward':
+        print('Building forward index:')
+        forward_index = ForwardIndex()
+        forward_index.build()
 
-    index.build_forward_and_reverse()
+    elif args.action == 'build_reverse':
+        print('Building reverse index:')
+        reverse_index = ReverseIndex()
+        reverse_index.build()
 
-    # db = None
-    #
-    # if args.doc2vec:
-    #     build_doc2vec(db)
+    elif args.action == 'build_all':
+        print('Building data for search:')
+        search_data = SearchData()
+        search_data.build()
+
+    elif args.action == 'clean':
+        IndexFiles.clean_tmp(IndexFiles.TMP_DIR)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script is supposed to build forward and reverse index')
-    parser.add_argument('--doc2vec', action='store_true', default=False,
-                        help='Build doc2vec as well?')
+    parser.add_argument('--action', type=str, default='build_all',
+                        help='')
 
-    args = parser.parse_args()
-
-    main(args)
+    arguments = parser.parse_args()
+    main(arguments)
