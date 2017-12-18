@@ -1,5 +1,5 @@
 var topics = [];
-
+var city_to_code = {'Moscow': 1, 'Saint-Petersburg': 2, 'Yaroslavl': 169};
 
 if (!String.format) {
   String.format = function(format) {
@@ -113,6 +113,31 @@ $(document).ready(function() {
   });
 });
 
+
+function get_filters()
+{
+    var filters = {};
+
+    var age_from = Math.max(18, Number($('#age_from').val()));
+    var age_to = Math.max(99, Number($('#age_to').val()));
+
+    var city = $('#city').val();
+
+    if(city.length == 0)
+    {
+        city = 'Saint-Petersburg';
+    }
+    
+    city = city_to_code[city];
+
+    filters['city'] = city;
+    filters['age_from'] = age_from;
+    filters['age_to'] = age_to;
+    filters['gender'] = 1;
+
+    return filters;
+}
+
 $("#query_submit_btn").on("click", function () 
 {
     var value = $('#query_text').val();
@@ -124,11 +149,13 @@ $("#query_submit_btn").on("click", function ()
     }
 
     $("body").addClass("loading");   
-
+    
+    var filters = get_filters();
+ 
     $.ajax({
       type: 'GET',
       url: '/process_query',
-      data: {'text': value, 'gender':1, 'city':2},
+      data: {'text': value, 'gender': filters['gender'], 'age_from':filters['age_from'], 'age_to':filters['age_to'],'city':filters['city'] },
       contentType: 'application/json',
       success: function(data)
       {

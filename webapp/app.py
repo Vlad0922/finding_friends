@@ -20,7 +20,7 @@ app = Flask('Finding friends app')
 client = MongoClient()
 db = client.ir_project_old
 
-eng = SearchEngine(db)
+eng = SearchEngine()
 
 
 city_map = defaultdict(lambda: 'Unknown',
@@ -39,6 +39,7 @@ gender_map = defaultdict(lambda: 'Unknown',
 
 @app.route('/')
 def hello_world():
+    print('wow! a request for an index!')
     return render_template('index.html')
 
 
@@ -47,7 +48,7 @@ def get_topics(ids):
 
 
 def get_users(text, filters, count=10):
-    search_res = {uid:score for uid,score in eng.search('BM25', 'search', text, 20, 1, (18, 25), 1)}
+    search_res = {uid:score for uid,score in eng.search('BM25', 'search', text, 10, int(filters['gender']), int(filters['city']), int(filters['age_from']), int(filters['age_to']))}
 
     res = [u for u in db.users.find({'uid': {'$in': list(search_res.keys())}})]
 
@@ -55,13 +56,12 @@ def get_users(text, filters, count=10):
                             {u['uid']:u['photo_max_orig'] for u in db.user_info.find({"uid": {"$in": [r['uid'] for r in res]}})}) 
     topics = defaultdict(lambda: np.zeros(25).tolist(), get_topics([r['uid'] for r in res]))
 
-
     for r in res:
         r['photo'] = photos[r['uid']]
-        # r['sex'] = gender_map[r['sex']]
-        # r['city'] = city_map[r['city']]
-        r['sex'] = 'Female'
-        r['city'] = 'Saint-Petersburg'
+        r['sex'] = gender_map[r['sex']]
+        r['city'] = city_map[r['city']]
+        #r['sex'] = 'Female'
+        #r['city'] = 'Saint-Petersburg'
         r['topics'] = topics[r['uid']]
         r['score'] = search_res[r['uid']]
 
@@ -75,6 +75,10 @@ def process_query():
     print('processing query....')
     q = request.args.get("text")
     f = request.args
+    
+    print(q, f)
+
+    #return json.dumps({})
 
     res = get_users(q, f)
     print('done!')
@@ -86,8 +90,11 @@ def start_app(config):
     port = config['SERVER_INFO'].getint('PORT')
     ip = config['SERVER_INFO'].get('IP')
     
-    socketio = SocketIO(app)
-    socketio.run(app)
+    print('starting a server, IP: {}, PORT: {}'.format(ip, port))
+    
+    app.run(host=ip, port=port)
+    #socketio = SocketIO(app)
+    #socketio.run(app)
 
 if __name__ == '__main__':
     config = configparser.ConfigParser()
