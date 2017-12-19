@@ -5,47 +5,77 @@ import pickle
 import os
 import math
 import tqdm
+import subprocess
 
+from multiprocessing import Pool
 from gensim.models import Doc2Vec
-from collections import Counter
-
-from utils import IndexFiles, Stemmer, Timer
+from collections import Counter, defaultdict
+from pymongo import MongoClient
+from utils import IndexFiles, Stemmer, Timer, process_entry
+from functools import partial
 
 
 class BM25:
     def __init__(self):
-        self.reverse_index = None
-        self.doc_lengths = None
-        self.token_freqs = None
-        self.user_infos = None
+        subprocess.run('sudo service mongod start'.split())
+        time.sleep(2)
+        client = MongoClient()
+        self.data_base = client.ir_project
+        self.reverse_index = dict()
+        self.user_length = dict()
+        self.token_freqs = dict()
+        self.users_infos = defaultdict(dict)
         self.bm25 = None
         self.k1 = 1.5
         self.b = 0.75
         self.stemmer = Stemmer()
         self.load_data()
-        self.N = len(self.doc_lengths)
-        self.avg_length = sum(list(self.doc_lengths.values())) / self.N
+        self.N = len(self.user_length)
+        self.avg_length = sum(list(self.user_length.values())) / self.N
+
+    def load_user_length(self):
+        with Timer('Loading user lengths'):
+            for entry in tqdm.tqdm(self.data_base.user_length.find(),
+                                   total=self.data_base.user_length.count()):
+                self.user_length[entry['uid']] = entry['length']
+
+    def load_token_freqs(self):
+        with Timer('Loading token freqs'):
+            for entry in tqdm.tqdm(self.data_base.token_freqs.find(),
+                                   total=self.data_base.token_freqs.count()):
+                self.token_freqs[entry['token']] = entry['freq']
+
+    def load_users_infos(self):
+        with Timer('Loading user infos'):
+            for entry in tqdm.tqdm(self.data_base.users_infos.find(),
+                                   total=self.data_base.users_infos.count()):
+                self.users_infos[entry['uid']]['sex'] = entry['sex']
+                self.users_infos[entry['uid']]['city'] = entry['city']
+                self.users_infos[entry['uid']]['age'] = entry['age']
 
     def load_data(self):
         with Timer('Loading bm25 files'):
-            self.reverse_index = IndexFiles.load(IndexFiles.REVERSE_INDEX)
-            self.doc_lengths = IndexFiles.load(IndexFiles.DOC_LENGTH)
-            self.token_freqs = IndexFiles.load(IndexFiles.DOC_FREQS)
-            self.user_infos = IndexFiles.load(IndexFiles.USER_INFOS)
+            self.load_user_length()
+            self.load_token_freqs()
+            self.load_users_infos()
 
     def search(self, query, num, gender, city, age_from, age_to, verbose=True, with_scores=False):
-        stemmed_query = self.stemmer.process(query).split()
+        tokens = self.stemmer.process(query).split()
 
         self.bm25 = Counter()
-        for token in stemmed_query:
-            self.update_bm25(token)
 
-        for uid in self.user_infos:
-            if self.user_infos[uid]['sex'] != gender or \
-                    self.user_infos[uid]['city'] != city or \
-                    self.user_infos[uid]['age'] < age_from or \
-                    self.user_infos[uid]['age'] > age_to:
+        for entry in self.data_base.reverse_index.find({'token': {'$in': tokens}}):
+            token = entry['token']
+            users_freqs = entry['uids_freqs']
 
+            for (uid, freq) in users_freqs:
+                self.update_bm25_(token, uid, freq)
+
+        for uid in self.users_infos:
+            if self.users_infos[uid]['sex'] != gender or \
+                    self.users_infos[uid]['city'] != city or \
+                    self.users_infos[uid]['age'] < age_from or \
+                    self.users_infos[uid]['age'] > age_to:
                 del self.bm25[uid]
 
         most_wanted = [(uid, rank) for (uid, rank) in self.bm25.most_common(num)]
@@ -59,13 +89,10 @@ class BM25:
         else:
             return [uid for (uid, _) in most_wanted]
 
-    def update_bm25(self, token):
-        if token in self.reverse_index:
-            for doc in self.reverse_index[token]:
-                tf = self.reverse_index[token][doc]
-                bm25_token = math.log(self.N / self.token_freqs[token]) * ((self.k1 + 1) * tf) / \
-                             (self.k1 * ((1 - self.b) + self.b * (self.doc_lengths[doc] / self.avg_length)) + tf)
-                self.bm25[doc] += bm25_token
+    def update_bm25_(self, token, uid, tf):
+        bm25_token = math.log(self.N / self.token_freqs[token]) * ((self.k1 + 1) * tf) / \
+                     (self.k1 * ((1 - self.b) + self.b * (self.user_length[uid] / self.avg_length)) + tf)
+        self.bm25[uid] += bm25_token
 
 
 class Doc2vecSearcher:

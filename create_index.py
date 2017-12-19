@@ -11,15 +11,17 @@ from pymongo import MongoClient
 from collections import defaultdict
 from multiprocessing import Pool
 from gensim.models import Doc2Vec
-from gensim.models.doc2vec import TaggedDocument
+from gensim.models.doc2vec import LabeledSentence, TaggedDocument
 from collections import Counter
 from os import listdir
 from os.path import isfile, join
-from utils import IndexFiles, Stemmer, Timer, MongoManager
+from utils import IndexFiles, Stemmer, Timer, MongoManager, get_chunks
+from itertools import accumulate, repeat, chain, tee
+from functools import partial
 
 
 class ForwardIndex:
-    CHUNK_SIZE = 25000
+    CHUNK_SIZE = 12000
     MAX_PROC = os.cpu_count()
 
     def __init__(self):
@@ -28,98 +30,70 @@ class ForwardIndex:
         client = MongoClient()
         self.data_base = client.ir_project
 
+    @staticmethod
+    def get_chunks(cont, width):
+        slices = accumulate(chain((0,), repeat(width, math.ceil(len(cont) / width))))
+        begin, end = tee(slices)
+        next(end)
+        return [cont[slc] for slc in map(slice, begin, end)]
+
     def build(self):
-        self.build_raws(IndexFiles.TMP_DIR, IndexFiles.RAW_PAT)
-        subprocess.run('sudo service mongod stop'.split())
-        ForwardIndex.clean_raws(IndexFiles.TMP_DIR)
-        ForwardIndex.merge_cleans(IndexFiles.TMP_DIR, IndexFiles.FORWARD_INDEX)
+        self.data_base.forward_index.delete_many({})
 
-    def build_raws(self, directory, file_pattern):
-        uids = [user['uid'] for user in self.data_base.users.find()]
-        offset = ForwardIndex.CHUNK_SIZE
-        i = 0
+        uids = [int(user['uid']) for user in self.data_base.users.find()]
+        uids = ForwardIndex.get_chunks(uids, ForwardIndex.CHUNK_SIZE)
+        uids = ForwardIndex.get_chunks(uids, ForwardIndex.MAX_PROC)
 
-        users_to_links = self.get_users_to_links()
-        links_to_contents = self.get_links_to_contents()
-        users_to_infos = self.get_users_to_infos()
-
-        while i < math.ceil(len(uids) / offset):
-            local_uids = uids[i * offset: (i + 1) * offset]
-            forward_index = self.get_users_to_posts(i, local_uids)
-
-            with Timer('Merging user info chunk {:03} together'.format(i)):
-                for uid in tqdm.tqdm(local_uids, total=len(local_uids)):
-                    text = ''
-                    for link in users_to_links[uid]:
-                        text += ' ' + links_to_contents[link]
-                    forward_index[uid] += ' ' + text + ' ' + users_to_infos[uid]
-
-                IndexFiles.dump(directory + file_pattern.format(i), forward_index)
-                i += 1
-
-    @staticmethod
-    def clean_raws(directory):
-        raw_files = [join(directory, f) for f in listdir(directory) if
-                     isfile(join(directory, f)) and 'raw' in f]
-        sizes = [os.path.getsize(file) for file in raw_files]
-
-        files_with_sizes = list(zip(sizes, raw_files))
-        files_with_sizes.sort(reverse=True)
-
-        files = [file for _, file in files_with_sizes]
-
-        i = 0
-        offset = ForwardIndex.MAX_PROC
-
-        while i * offset < len(files):
+        for uids_chunk in uids:
             with Pool() as pool:
-                pool.map(ForwardIndex.process_chunk, files[i * offset: (i + 1) * offset])
-            i += 1
+                pool.map(ForwardIndex.process_chunk_, uids_chunk)
 
     @staticmethod
-    def merge_cleans(dir, filename):
-        clean_files = [join(dir, f) for f in listdir(dir) if isfile(join(dir, f)) and 'clean' in f]
-
-        forward_index = dict()
-
-        for file in clean_files:
-            tmp_index = IndexFiles.load(file)
-            forward_index.update(tmp_index)
-
-        IndexFiles.dump(filename, forward_index)
-
-    @staticmethod
-    def process_chunk(filepath):
+    def process_chunk_(uids):
         stemmer = Stemmer()
-        chunk = IndexFiles.load(filepath)
 
-        for uid in chunk:
-            chunk[uid] = stemmer.process(chunk[uid])
+        client = MongoClient()
+        db_client = client.ir_project
 
-        IndexFiles.dump(filepath.replace('raw', 'clean'), chunk)
+        forward_index = ForwardIndex.get_users_to_posts_(db_client, uids)
+        links_to_contents = ForwardIndex.get_links_to_contents_(db_client, uids)
+        users_to_links = ForwardIndex.get_users_to_links_(db_client, uids)
+        users_to_infos = ForwardIndex.get_users_to_infos_(db_client, uids)
 
-    def get_users_to_posts(self, chunk_id, uids):
+        for uid in uids:
+            text = ''
+            for link in users_to_links[uid]:
+                text += ' ' + links_to_contents[link]
+            forward_index[uid] = text + ' ' + users_to_infos[uid] + ' ' + forward_index[uid]
+            forward_index[uid] = stemmer.process(forward_index[uid])
+            if not 10 < len(forward_index[uid]) < 10000:
+                del forward_index[uid]
+
+        db_insertions = [{'uid': uid, 'text': forward_index[uid]} for uid in forward_index]
+        db_client.forward_index.insert_many(db_insertions)
+
+    @staticmethod
+    def get_users_to_posts_(db_client, uids):
         users_to_posts = defaultdict(str)
 
-        with Timer('Loading user chunk {:03} posts'.format(chunk_id)):
-            for user_post in tqdm.tqdm(self.data_base.wall_posts.find({'uid': {'$in': uids}}),
-                                       total=len(uids)):
+        with Timer('Loading users to posts'):
+            for user_post in db_client.wall_posts.find({'uid': {'$in': uids}}):
                 user_text = ''
                 for p in user_post['posts']:
                     user_text += ' ' + p['text']
-                users_to_posts[user_post['uid']] = user_text
+                users_to_posts[int(user_post['uid'])] = user_text
 
         return users_to_posts
 
-    def get_links_to_contents(self):
+    @staticmethod
+    def get_links_to_contents_(db_client, uids):
         links_to_contents = defaultdict(str)
 
         def not_none(value):
             return value if value is not None else ''
 
-        with Timer('Loading link contents'):
-            for link in tqdm.tqdm(self.data_base.links_content.find(),
-                                  total=self.data_base.links_content.count()):
+        with Timer('Loading link content'):
+            for link in db_client.links_content.find({'uid': {'$in': uids}}):
                 text = ''
                 if link['type'] == 'sprashivai':
                     text += ' ' + ' '.join(not_none(link['answers']))
@@ -141,65 +115,74 @@ class ForwardIndex:
 
         return links_to_contents
 
-    def get_users_to_links(self):
+    @staticmethod
+    def get_users_to_links_(db_client, uids):
         users_to_links = defaultdict(list)
-
-        with Timer('Loading user links'):
-            for user_links in tqdm.tqdm(self.data_base.links.find(),
-                                        total=self.data_base.links.count()):
-                users_to_links[user_links['uid']].extend(user_links['links'])
-
+        with Timer('Loading user to links'):
+            for user_links in db_client.links.find({'uid': {'$in': uids}}):
+                users_to_links[int(user_links['uid'])].extend(user_links['links'])
         return users_to_links
 
-    def get_users_to_infos(self):
+    @staticmethod
+    def get_users_to_infos_(db_client, uids):
         users_to_infos = defaultdict(str)
 
         infos = ['interests', 'music', 'activities', 'movies',
-                 'tv', 'books', 'games', 'about','quotes']
+                 'tv', 'books', 'games', 'about', 'quotes']
 
         with Timer('Loading user infos'):
-            for user in tqdm.tqdm(self.data_base.user_info.find(),
-                                  total=self.data_base.user_info.count()):
-
+            for user in db_client.user_info.find({'uid': {'$in': uids}}):
                 user = defaultdict(str, user)
                 user_text = ''
-
                 for info in infos:
                     user_text += ' ' + user[info]
-
-                users_to_infos[user['uid']] = user_text
-
+                users_to_infos[int(user['uid'])] = user_text
         return users_to_infos
 
 
 class ReverseIndex:
+    CHUNK_SIZE = 1024
+
     def __init__(self):
-        with MongoManager():
-            client = MongoClient()
-            self.data_base = client.ir_project
-            total_users = self.data_base.users.count()
-            self.pbar = tqdm.tqdm(total=total_users)
-            self.reverse_index = defaultdict(Counter)
-            self.dl = dict()
+        subprocess.run('sudo service mongod start'.split())
+        time.sleep(5)
+        client = MongoClient()
+        self.data_base = client.ir_project
+        self.reverse_index = defaultdict(Counter)
+        self.user_length = dict()
 
     def build(self):
-        clean_files = [join(IndexFiles.TMP_DIR, f)
-                       for f in listdir(IndexFiles.TMP_DIR)
-                       if isfile(join(IndexFiles.TMP_DIR, f)) and 'clean' in f]
+        result = self.data_base.reverse_index.delete_many({})
+        print(result.deleted_count)
+        result = self.data_base.user_length.delete_many({})
+        print(result.deleted_count)
 
-        for file in clean_files:
-            forward_index = IndexFiles.load(file)
-            for uid in forward_index:
-                splitted = forward_index[uid].split()
-                self.dl[uid] = len(splitted)
-                [self.update_reverse(token, uid) for token in splitted]
-                self.pbar.update(1)
+        for user in tqdm.tqdm(self.data_base.forward_index.find(), total=self.data_base.forward_index.count()):
+            splitted = user['text'].split()
+            self.user_length[user['uid']] = len(splitted)
+            [self.update_reverse(token, user['uid']) for token in splitted]
 
-        IndexFiles.dump(IndexFiles.DOC_LENGTH, self.dl)
-        IndexFiles.dump(IndexFiles.REVERSE_INDEX, self.reverse_index)
+        subprocess.run('sudo service mongod stop'.split())
+        time.sleep(2)
+        subprocess.run('sudo service mongod start'.split())
+        time.sleep(2)
 
-    def update_reverse(self, token, index):
-        self.reverse_index[token][index] += 1
+        token_chunks = get_chunks(list(self.reverse_index.keys()), ReverseIndex.CHUNK_SIZE)
+
+        for chunk in tqdm.tqdm(token_chunks, total=len(token_chunks)):
+            local_index = dict()
+            for token in chunk:
+                local_index[token] = list(zip(self.reverse_index[token].keys(),
+                                              self.reverse_index[token].values()))
+
+            chunk_insertion = [{'token': token, 'uids_freqs': local_index[token]} for token in local_index]
+            self.data_base.reverse_index.insert_many(chunk_insertion)
+
+        length_insertions = [{'uid': uid, 'length':  self.user_length[uid]} for uid in self.user_length]
+        self.data_base.user_length.insert_many(length_insertions)
+
+    def update_reverse(self, token, uid):
+        self.reverse_index[token][uid] += 1
 
 
 class SearchData:
@@ -208,78 +191,90 @@ class SearchData:
         self.data_base = client.ir_project
 
     def build(self):
-        SearchData.build_forward_index()
-        SearchData.build_reverse_index()
-        SearchData.build_doc_freqs()
-        self.build_user_infos()
+        with Timer('Building forward index with mongo'):
+            forward_index = ForwardIndex()
+            forward_index.build()
+        # with Timer('Building reverse index with mongo'):
+        #     reverse_index = ReverseIndex()
+        #     reverse_index.build()
+        # self.build_token_freqs()
+        # self.build_users_infos()
 
     @staticmethod
     def build_reverse_index():
-        with Timer('Building reverse index') as t:
+        with Timer('Building reverse index'):
             reverse_index = ReverseIndex()
             reverse_index.build()
 
     @staticmethod
     def build_forward_index():
-        with Timer('Building forward index') as t:
+        with Timer('Building forward index'):
             forward_index = ForwardIndex()
             forward_index.build()
 
-    @staticmethod
-    def build_doc_freqs():
-        with Timer('Building doc frequencies') as t:
-            df = Counter()
-            reverse_index = IndexFiles.load(IndexFiles.REVERSE_INDEX)
-            for token in tqdm.tqdm(reverse_index, total=len(reverse_index)):
-                for uid in reverse_index[token]:
-                    df[token] += reverse_index[token][uid]
+    def build_token_freqs(self):
+        with Timer('Building token frequencies'), MongoManager():
+            client = MongoClient()
+            data_base = client.ir_project
+            result = self.data_base.token_freqs.delete_many({})
+            print(result.deleted_count)
 
-            IndexFiles.dump(IndexFiles.DOC_FREQS, df)
+            token_freqs = Counter()
+            for entry in tqdm.tqdm(self.data_base.reverse_index.find(), total=self.data_base.reverse_index.count()):
+                for _, freq in entry['uids_freqs']:
+                    token_freqs[entry['token']] += freq
 
-    def build_user_infos(self):
+            token_freqs_insertions = [{'token': token, 'freq': token_freqs[token]} for token in token_freqs]
+            data_base.token_freqs.insert_many(token_freqs_insertions)
+
+    def build_users_infos(self):
         with Timer('Building user infos'), MongoManager():
+            client = MongoClient()
+            data_base = client.ir_project
+            result = self.data_base.users_infos.delete_many({})
+            print(result.deleted_count)
+
             users_infos = defaultdict(dict)
 
             for user in tqdm.tqdm(self.data_base.users.find(), total=self.data_base.users.count()):
-                users_infos[user['uid']]['sex'] = user['sex']
-                users_infos[user['uid']]['city'] = user['city']
-                users_infos[user['uid']]['age'] = user['age']
+                uid = int(user['uid'])
+                users_infos[uid]['sex'] = user['sex']
+                users_infos[uid]['city'] = user['city']
+                users_infos[uid]['age'] = user['age']
 
-            IndexFiles.dump(IndexFiles.USER_INFOS, users_infos)
+            users_infos_insertions = [{'uid': uid,
+                                       'sex': users_infos[uid]['sex'],
+                                       'city': users_infos[uid]['city'],
+                                       'age': users_infos[uid]['age']} for uid in users_infos]
+            data_base.users_infos.insert_many(users_infos_insertions)
 
 
-def build_doc2vec(db):
+def build_doc2vec():
+    client = MongoClient()
+    data_base = client.ir_project
     cores = multiprocessing.cpu_count()
     assert gensim.models.doc2vec.FAST_VERSION > -1, "This will be painfully slow otherwise"
-    #
-    # forward_index = db.forward_index
-    #
-    # ids_indices_dict = Index.create_or_load_ids_dict(db)
-    #
-    # documents = []
-    #
-    # for id_text in forward_index.find():
-    #     documents.append(TaggedDocument(id_text['text'].split(), [ids_indices_dict[id_text['uid']]]))
-    with open('doc.txt', 'r') as handle:
-        lines = handle.readlines()
-        print(len(lines))
-        lines = ' '.join(lines)
-        lines = lines.split()
 
-        i = 0
-        docs = []
-        while i < len(lines):
-            docs.append(lines[i: i + 20])
-            i += 20
+    def generate_docs(database):
+        for entry in database.forward_index.find():
+            yield TaggedDocument(entry['text'].split(), [entry['uid']])
 
-        documents = [TaggedDocument(doc, 'sent{}'.format(index)) for (index, doc) in enumerate(docs)]
+    subprocess.run('sudo service mongod start'.split())
+    time.sleep(5)
+    client = MongoClient()
+    database = client.ir_project
 
-    model = Doc2Vec(documents, size=100, window=10, min_count=5, workers=cores)
+    model = Doc2Vec(size=300, workers=cores, alpha=0.025, min_alpha=0.025)
 
-    # for epoch in range(10):
-    #     model.train(documents[epoch], total_words=1000, epochs=10)
+    it = generate_docs(database)
 
-    model.save('forward_index.doc2vec')
+    for epoch in range(10):
+        model.train(it)
+        model.alpha -= 0.002
+        model.min_alpha = model.alpha
+        model.train(it)
+
+    model.save('index.doc2vec')
 
 
 def main(args):
@@ -298,6 +293,11 @@ def main(args):
         print('Building data for search:')
         search_data = SearchData()
         search_data.build()
+
+    elif args.action == 'build_doc2vec':
+        print('Building doc2vec:')
+        with MongoManager():
+            build_doc2vec()
 
     elif args.action == 'clean':
         IndexFiles.clean_tmp(IndexFiles.TMP_DIR)
