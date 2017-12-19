@@ -18,15 +18,15 @@ from search import SearchEngine
 
 app = Flask('Finding friends app')
 client = MongoClient()
-db = client.ir_project_old
+db = client.ir_project
 
 eng = SearchEngine()
 
 
 city_map = defaultdict(lambda: 'Unknown',
                         {   
-                            1: 'Saint-Petersburg',
-                            2: 'Moscow',
+                            2: 'Saint-Petersburg',
+                            1: 'Moscow',
                             169: 'Yaroslavl'
                         })
 
@@ -48,7 +48,7 @@ def get_topics(ids):
 
 
 def get_users(text, filters, count=10):
-    search_res = {uid:score for uid,score in eng.search('BM25', 'search', text, 10, int(filters['gender']), int(filters['city']), int(filters['age_from']), int(filters['age_to']))}
+    search_res = {int(uid):score for uid,score in eng.search('BM25', 'search', text, 10, int(filters['gender']), int(filters['city']), int(filters['age_from']), int(filters['age_to']))}
 
     res = [u for u in db.users.find({'uid': {'$in': list(search_res.keys())}})]
 
@@ -66,8 +66,11 @@ def get_users(text, filters, count=10):
         r['score'] = search_res[r['uid']]
 
         del r['_id']
+    
+    print(search_res)
+    print(res)
 
-    return sorted(res, key=lambda r: r['score'], reverse=False)
+    return sorted(res, key=lambda r: r['score'])
 
 
 @app.route('/process_query', methods=['POST', 'GET'])

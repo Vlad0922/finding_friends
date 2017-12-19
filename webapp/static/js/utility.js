@@ -1,4 +1,4 @@
-var topics = [];
+var topics = {};
 var city_to_code = {'Moscow': 1, 'Saint-Petersburg': 2, 'Yaroslavl': 169};
 
 if (!String.format) {
@@ -15,6 +15,8 @@ if (!String.format) {
 
 function add_search_results(data)
 {
+    data.sort((a, b) => (b['score'] - a['score']));
+
     Plotly.purge('topics_wrapper');
 
     table = $('#search_table').DataTable();
@@ -26,7 +28,7 @@ function add_search_results(data)
     {
         person = data[idx];
 
-        topics.push(person['topics']);
+        topics[person['uid']] = person['topics'];
 
         table.row.add({
                         'Information': {
@@ -44,7 +46,8 @@ function add_search_results(data)
 
 function plot_topics(idx)
 {
-    topics_dist = topics[idx];
+    var uid = $('#search_table').DataTable().row(idx).data()['Information']['uid'];
+    topics_dist = topics[uid];
     topics_names = []
 
     for(tidx in topics_dist)
@@ -79,6 +82,7 @@ $(document).ready(function() {
       "searching": false,
       "bInfo": false,
       "lengthChange": false,
+      "order": [[0, "desc"]],
       "columns": [
                     {"data" : "Score"},
                     {
