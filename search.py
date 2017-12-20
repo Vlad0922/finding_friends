@@ -52,6 +52,7 @@ class BM25:
                 self.users_infos[entry['uid']]['sex'] = entry['sex']
                 self.users_infos[entry['uid']]['city'] = entry['city']
                 self.users_infos[entry['uid']]['age'] = entry['age']
+                self.users_infos[entry['uid']]['relation'] = entry['relation']
 
     def load_data(self):
         with Timer('Loading bm25 files'):
@@ -59,7 +60,7 @@ class BM25:
             self.load_token_freqs()
             self.load_users_infos()
 
-    def search(self, query, num, gender, city, age_from, age_to, verbose=True, with_scores=False):
+    def search(self, query, num, gender, city, age_from, age_to, relation, verbose=True, with_scores=False):
         tokens = self.stemmer.process(query).split()
 
         self.bm25 = Counter()
@@ -75,7 +76,8 @@ class BM25:
             if self.users_infos[uid]['sex'] != gender or \
                     self.users_infos[uid]['city'] != city or \
                     self.users_infos[uid]['age'] < age_from or \
-                    self.users_infos[uid]['age'] > age_to:
+                    self.users_infos[uid]['age'] > age_to or \
+                    self.users_infos[uid]['relation'] != relation:
                 del self.bm25[uid]
 
         most_wanted = [(uid, rank) for (uid, rank) in self.bm25.most_common(num)]
@@ -147,7 +149,7 @@ class SearchEngine:
         self.bm25 = None
         self.doc2vec_searcher = None
 
-    def search(self, method, mode, query, max_num_of_results, gender, city, age_from, age_to):
+    def search(self, method, mode, query, max_num_of_results, gender, city, age_from, age_to, relation):
         if method == 'BM25':
             if not self.bm25:
                 self.bm25 = BM25()
@@ -161,7 +163,7 @@ class SearchEngine:
 
         with Timer('Searching for {} users'.format(max_num_of_results)):
             uids = searcher.search(query, max_num_of_results, gender, city,
-                                   age_from, age_to, verbose=True, with_scores=True)
+                                   age_from, age_to, relation, verbose=True, with_scores=True)
 
         return uids
 
@@ -184,7 +186,8 @@ def main(args):
     while True:
         uids = searcher.search(args.method, args.mode, query,
                                n_results, args.gender,
-                               args.city, args.age_from, args.age_to)
+                               args.city, args.age_from,
+                               args.age_to, args.relation)
 
         feedback = input('do you wish to leave feedback? ')
 
@@ -226,6 +229,8 @@ if __name__ == '__main__':
     parser.add_argument('--age_from', type=int, default=18,
                         help='Age lower bound')
     parser.add_argument('--age_to', type=int, default=30,
+                        help='Age upper bound')
+    parser.add_argument('--relation', type=int, default=6,
                         help='Age upper bound')
 
     arguments = parser.parse_args()

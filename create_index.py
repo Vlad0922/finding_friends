@@ -139,6 +139,26 @@ class ForwardIndex:
                 users_to_infos[int(user['uid'])] = user_text
         return users_to_infos
 
+    @staticmethod
+    def compress():
+        with Timer('Compressing forward index'), MongoManager():
+            client = MongoClient()
+            data_base = client.ir_project
+            forward_index_comp = dict()
+
+            result = data_base.forward_index_comp.delete_many({})
+            print(result.deleted_count)
+
+            for entry in tqdm.tqdm(data_base.forward_index.find(),
+                                   total=data_base.forward_index.count()):
+                if 500 < len(entry['text']) < 1000:
+                    forward_index_comp[entry['uid']] = entry['text']
+
+            db_insertions = [{'uid': uid, 'text': forward_index_comp[uid]} for uid in forward_index_comp]
+            data_base.forward_index_comp.insert_many(db_insertions)
+
+            print('forward_index_comp size: {}'.format(data_base.forward_index_comp.count()))
+
 
 class ReverseIndex:
     CHUNK_SIZE = 1024
@@ -191,14 +211,18 @@ class SearchData:
         self.data_base = client.ir_project
 
     def build(self):
-        with Timer('Building forward index with mongo'):
-            forward_index = ForwardIndex()
-            forward_index.build()
+        # with Timer('Building forward index with mongo'):
+        #     forward_index = ForwardIndex()
+        #     forward_index.build()
+
+        # forward_index = ForwardIndex()
+        # forward_index.compress()
+
         # with Timer('Building reverse index with mongo'):
         #     reverse_index = ReverseIndex()
         #     reverse_index.build()
         # self.build_token_freqs()
-        # self.build_users_infos()
+        self.build_users_infos()
 
     @staticmethod
     def build_reverse_index():
@@ -236,43 +260,67 @@ class SearchData:
 
             users_infos = defaultdict(dict)
 
+            count1 = 0
+            count2 = 0
+
             for user in tqdm.tqdm(self.data_base.users.find(), total=self.data_base.users.count()):
                 uid = int(user['uid'])
                 users_infos[uid]['sex'] = user['sex']
                 users_infos[uid]['city'] = user['city']
                 users_infos[uid]['age'] = user['age']
+                try:
+                    users_infos[uid]['relation'] = user['relation']
+                    count1 += 1
+                except KeyError:
+                    users_infos[uid]['relation'] = -1
+                    count2 += 1
+
+            print(count1, count2)
 
             users_infos_insertions = [{'uid': uid,
                                        'sex': users_infos[uid]['sex'],
                                        'city': users_infos[uid]['city'],
-                                       'age': users_infos[uid]['age']} for uid in users_infos]
+                                       'age': users_infos[uid]['age'],
+                                       'relation': users_infos[uid]['relation']} for uid in users_infos]
             data_base.users_infos.insert_many(users_infos_insertions)
 
 
 def build_doc2vec():
-    client = MongoClient()
-    data_base = client.ir_project
     cores = multiprocessing.cpu_count()
     assert gensim.models.doc2vec.FAST_VERSION > -1, "This will be painfully slow otherwise"
+    #
+    # def generate_docs(db):
+    #     # count = 0
+    #     for entry in db.forward_index_comp.find():
+    #         yield TaggedDocument(entry['text'].split(), [entry['uid']])
+    #         # if count >= 1000:
+    #         #     break
+    #         # count += 1
 
-    def generate_docs(database):
-        for entry in database.forward_index.find():
-            yield TaggedDocument(entry['text'].split(), [entry['uid']])
-
-    subprocess.run('sudo service mongod start'.split())
-    time.sleep(5)
     client = MongoClient()
     database = client.ir_project
 
-    model = Doc2Vec(size=300, workers=cores, alpha=0.025, min_alpha=0.025)
+    model = Doc2Vec(size=20, workers=cores, alpha=0.025, min_alpha=0.025)
 
-    it = generate_docs(database)
+    docs = [TaggedDocument(entry['text'].split()[:48], [entry['uid']]) for entry in database.forward_index_comp.find()]
+
+    docs = docs[:256]
+    print(len(docs))
+
+    print('docs are loaded')
+
+    subprocess.run('sudo service mongod stop'.split())
+
+    # it = generate_docs(database)
+
+    model.build_vocab(docs)
 
     for epoch in range(10):
-        model.train(it)
+        print('epoch: {}'.format(epoch))
+        model.train(docs, total_examples=model.corpus_count)
         model.alpha -= 0.002
         model.min_alpha = model.alpha
-        model.train(it)
+        model.train(docs)
 
     model.save('index.doc2vec')
 
