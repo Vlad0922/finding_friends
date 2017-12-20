@@ -45,7 +45,7 @@
             <span class="input-group-addon">Age</span>
             <div class="row">
                 <div class="form-group col-xs-6">
-                    <input id="age_from" class="form-control input-group-lg" type="text" name="age_from" placeholder="16"/>
+                    <input id="age_from" class="form-control input-group-lg" type="text" name="age_from" placeholder="18"/>
                 </div>
 
                 <div class="form-group col-xs-6">
@@ -58,18 +58,29 @@
             <span class="input-group-addon">City</span>
             <input type="text" class="form-control" placeholder="Saint-Petersburg" name="city" id="city">
           </div>
+          
+         <form>
+           <div class="form">
+             <label for="gender">Select gender:</label>
+             <select class="form-control" id="gender">
+               <option value=1>Female</option>
+               <option value=2>Male</option>
+             </select>
+           </div>
+         </form>
+
 
           <form>
             <div class="form">
-              <label for="sel1">Select status:</label>
-              <select class="form-control" id="sel1">
-                <option>Not married </option>
-                <option>In a relationship </option>
-                <option>Engaged </option>
-                <option>Married</option>
-                <option>It's complicated</option>
-                <option>Actively searching</option>
-                <option>In love</option>
+              <label for="status">Select status:</label>
+              <select class="form-control" id="status">
+                <option value=6>Actively searching</option>
+                <option value=1>Single</option>
+                <option value=2>In a relationship</option>
+                <option value=3>Engaged </option>
+                <option value=4>Married</option>
+                <option value=5>It's complicated</option>
+                <option value=7>In love</option>
               </select>
             </div>
           </form>
@@ -93,8 +104,8 @@
         </table>
       </div>
       <div class="col-xs-6">
-        <div id="topics_wrapper">
-        </div>
+        <div id="top_topics"></div>
+        <div id="topics_wrapper"></div>
       </div>
     </div>
 

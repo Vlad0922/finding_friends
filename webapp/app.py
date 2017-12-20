@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from flask_socketio import SocketIO
 from flask import Flask, render_template, make_response, request, Response
+from gensim.models.ldamulticore import LdaMulticore
 
 from pymongo import MongoClient
 
@@ -15,6 +16,8 @@ import json
 import configparser
 
 from search import SearchEngine
+
+import pickle
 
 app = Flask('Finding friends app')
 client = MongoClient()
@@ -35,6 +38,19 @@ gender_map = defaultdict(lambda: 'Unknown',
                             1: 'Female',
                             2: 'Male',
                         })
+
+
+def preload_topics_words():
+    ldamodel = pickle.load(open('gensim_lda.pickle', 'rb'))
+     
+    res = list()
+    for i in range(100):
+        terms = [ldamodel.id2word[t[0]] for t in ldamodel.get_topic_terms(i)]
+        res.append(terms)
+
+    return res
+
+topics_words = preload_topics_words()
 
 
 @app.route('/')
@@ -58,6 +74,10 @@ def topics_to_heatmap(topics):
 
 def get_users(text, filters, count=10):
     search_res = {int(uid):score for uid,score in eng.search('BM25', 'search', text, 10, int(filters['gender']), int(filters['city']), int(filters['age_from']), int(filters['age_to']))}
+    max_score = max([val for val in search_res.values()])
+
+    for uid in search_res:
+        search_res[uid] = round(search_res[uid] / max_score, 4)
 
     res = [u for u in db.users.find({'uid': {'$in': list(search_res.keys())}})]
 
@@ -69,17 +89,13 @@ def get_users(text, filters, count=10):
         r['photo'] = photos[r['uid']]
         r['sex'] = gender_map[r['sex']]
         r['city'] = city_map[r['city']]
-        #r['sex'] = 'Female'
-        #r['city'] = 'Saint-Petersburg'
         r['topics_heatmap'] = topics_to_heatmap(topics[r['uid']])
-        r['topics'] = topics[r['uid']]
+        r['topics'] = sorted(topics[r['uid']], key=lambda t: t[1])
+        r['topics_words'] = [' '.join(topics_words[t[0]]) for t in  r['topics']]
         r['score'] = search_res[r['uid']]
 
         del r['_id']
     
-    print(search_res)
-    print(res)
-
     return sorted(res, key=lambda r: r['score'])
 
 
@@ -88,10 +104,6 @@ def process_query():
     print('processing query....')
     q = request.args.get("text")
     f = request.args
-    
-    print(q, f)
-
-    #return json.dumps({})
 
     res = get_users(q, f)
     print('done!')

@@ -1,5 +1,7 @@
 var topics = {};
 var city_to_code = {'Moscow': 1, 'Saint-Petersburg': 2, 'Yaroslavl': 169};
+var gender_to_code = {'Female': 1, 'Male':2};
+
 
 if (!String.format) {
   String.format = function(format) {
@@ -22,7 +24,7 @@ function add_search_results(data)
     table = $('#search_table').DataTable();
 
     table.clear();
-    topics = [];
+    topics = {};
 
     for(idx in data)
     {
@@ -36,7 +38,9 @@ function add_search_results(data)
                                         'uid':person['uid'], 
                                         'city':person['city'], 
                                         'age':person['age'], 
-                                        'sex':person['sex']
+                                        'sex':person['sex'],
+                                        'topics_top':person['topics'],
+                                        'topics_words':person['topics_words']
                                         },                        
                         'Photo': {'photo':person['photo']},
                         'Score': person['score'], 
@@ -47,19 +51,33 @@ function add_search_results(data)
 function plot_topics(idx)
 {
     var uid = $('#search_table').DataTable().row(idx).data()['Information']['uid'];
-    topics_dist = topics[uid];
-    topics_names = []
+    var topics_dist = topics[uid];
+    var topics_top = $('#search_table').DataTable().row(idx).data()['Information']['topics_top'];
+    var topics_words = $('#search_table').DataTable().row(idx).data()['Information']['topics_words'];
 
-    for(tidx in topics_dist)
-    {
-        topics_names.push('Topic #' + tidx);
-    }
-    
+
     var colorscaleValue = [
       [0, '#ffffff'],
       [1, '#ff7700']
-    ];
+    ]; 
 
+    var topics_scores = [];
+    var topics_names = [];
+
+    for(tidx in topics_top)
+    {
+        var tname = 'Topic #' + topics_top[tidx][0];
+        topics_scores.push(topics_top[tidx][1]);
+        topics_names.push(tname);
+    }
+    
+    var data_top = [{
+      type: 'bar',
+      x: topics_scores,
+      y: topics_names,
+      orientation: 'h',
+      text: topics_words,
+    }];      
 
     var data = [{
       //type: 'bar',
@@ -90,6 +108,7 @@ function plot_topics(idx)
                   }
 
     Plotly.newPlot('topics_wrapper', data, layout,  {staticPlot:false});
+    Plotly.newPlot('top_topics', data_top);
 }
 
 $(document).ready(function() {
@@ -139,9 +158,9 @@ function get_filters()
     var filters = {};
 
     var age_from = Math.max(18, Number($('#age_from').val()));
-    var age_to = Math.max(99, Number($('#age_to').val()));
+    var age_to = Math.min(99, Number($('#age_to').val()));
 
-    var city = $('#city').val();
+    var city = $('#city').text();
 
     if(city.length == 0)
     {
@@ -153,8 +172,9 @@ function get_filters()
     filters['city'] = city;
     filters['age_from'] = age_from;
     filters['age_to'] = age_to;
-    filters['gender'] = 1;
-
+    filters['gender'] = Number($('#gender').val());
+    filters['status'] = Number($('#status').val());
+    
     return filters;
 }
 
@@ -171,11 +191,14 @@ $("#query_submit_btn").on("click", function ()
     $("body").addClass("loading");   
     
     var filters = get_filters();
+    var request_data = {'text': value, 'gender': filters['gender'], 'age_from':filters['age_from'], 'age_to':filters['age_to'],'city':filters['city'], 'status':filters['status'] };
+
+    console.log(request_data);
  
     $.ajax({
       type: 'GET',
       url: '/process_query',
-      data: {'text': value, 'gender': filters['gender'], 'age_from':filters['age_from'], 'age_to':filters['age_to'],'city':filters['city'] },
+      data: request_data,
       contentType: 'application/json',
       success: function(data)
       {
