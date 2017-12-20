@@ -47,6 +47,15 @@ def get_topics(ids):
     return {u['uid']:u['topics'] for u in db.topics.find({"uid": {"$in": ids}})}
 
 
+def topics_to_heatmap(topics):
+    res = np.zeros((10, 10))
+       
+    for t_idx, t_val in topics:
+        res[t_idx % 10, t_idx // 10] = t_val
+
+    return res.tolist()
+
+
 def get_users(text, filters, count=10):
     search_res = {int(uid):score for uid,score in eng.search('BM25', 'search', text, 10, int(filters['gender']), int(filters['city']), int(filters['age_from']), int(filters['age_to']))}
 
@@ -62,6 +71,7 @@ def get_users(text, filters, count=10):
         r['city'] = city_map[r['city']]
         #r['sex'] = 'Female'
         #r['city'] = 'Saint-Petersburg'
+        r['topics_heatmap'] = topics_to_heatmap(topics[r['uid']])
         r['topics'] = topics[r['uid']]
         r['score'] = search_res[r['uid']]
 

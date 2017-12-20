@@ -28,7 +28,7 @@ function add_search_results(data)
     {
         person = data[idx];
 
-        topics[person['uid']] = person['topics'];
+        topics[person['uid']] = person['topics_heatmap'];
 
         table.row.add({
                         'Information': {
@@ -54,12 +54,22 @@ function plot_topics(idx)
     {
         topics_names.push('Topic #' + tidx);
     }
+    
+    var colorscaleValue = [
+      [0, '#ffffff'],
+      [1, '#ff7700']
+    ];
+
 
     var data = [{
-      type: 'bar',
-      x: topics_dist,
-      y: topics_names,
-      orientation: 'h'
+      //type: 'bar',
+      type: 'heatmap',
+      z: topics_dist,
+      //x: topics_dist,
+      //y: topics_names,
+      //orientation: 'h',
+
+      colorscale: colorscaleValue,
     }];
 
     var layout = {
@@ -70,10 +80,16 @@ function plot_topics(idx)
                         l: 70, //left margin
                         r: 20, //right margin
                         b: 20 //bottom margin
+                    },
+                    xaxis: {
+                        'showticklabels':false
+                    },
+                    yaxis: {
+                        'showticklabels':false
                     }  
                   }
 
-    Plotly.newPlot('topics_wrapper', data, layout,  {staticPlot:true});
+    Plotly.newPlot('topics_wrapper', data, layout,  {staticPlot:false});
 }
 
 $(document).ready(function() {
