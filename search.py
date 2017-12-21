@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 from pymongo import MongoClient
 from utils import IndexFiles, Stemmer, Timer, process_entry
 from functools import partial
+from pybm25 import PyBM25 as BM25cpp
 
 
 class BM25:
@@ -148,11 +149,15 @@ class SearchEngine:
     def __init__(self):
         self.bm25 = None
         self.doc2vec_searcher = None
+        self.stemmer = Stemmer()
 
     def search(self, method, mode, query, max_num_of_results, gender, city, age_from, age_to, relation):
+        tokens = self.stemmer.process(query).split()
+        query_bytes = [str.encode(token) for token in tokens]
+
         if method == 'BM25':
             if not self.bm25:
-                self.bm25 = BM25()
+                self.bm25 = BM25cpp(b'index.bin')
             searcher = self.bm25
         elif method == 'doc2vec':
             if not self.doc2vec_searcher:
@@ -162,8 +167,7 @@ class SearchEngine:
             raise ValueError('unknown method. Only BM25 and doc2vec are supported')
 
         with Timer('Searching for {} users'.format(max_num_of_results)):
-            uids = searcher.search(query, max_num_of_results, gender, city,
-                                   age_from, age_to, relation, verbose=True, with_scores=True)
+            uids = searcher.search(query_bytes, max_num_of_results, gender, city, age_from, age_to, relation)
 
         return uids
 
@@ -188,6 +192,9 @@ def main(args):
                                n_results, args.gender,
                                args.city, args.age_from,
                                args.age_to, args.relation)
+
+        for (uid, rank) in uids:
+            print('rank: {0:3.3f} https://vk.com/id{1}'.format(rank, uid))
 
         feedback = input('do you wish to leave feedback? ')
 
