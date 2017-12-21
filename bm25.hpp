@@ -100,7 +100,7 @@ namespace search {
         user_infos_t user_infos_;
         bm25_t bm25_;
 
-        size_t n_;
+        double n_;
         double avg_length_;
         const double k1_ = 1.5;
         const double b_ = 0.75;
