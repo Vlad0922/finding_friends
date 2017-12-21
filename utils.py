@@ -3,12 +3,33 @@ import json
 import ujson
 import time
 import subprocess
+import math
 
 from pymorphy2 import MorphAnalyzer
 from nltk.corpus import stopwords
 from nltk.tokenize import RegexpTokenizer, TweetTokenizer
 from os import listdir
 from os.path import isfile, join
+from itertools import accumulate, repeat, chain, tee
+from collections import Counter
+
+
+def get_chunks(cont, width):
+    slices = accumulate(chain((0,), repeat(width, math.ceil(len(cont) / width))))
+    begin, end = tee(slices)
+    next(end)
+    return [cont[slc] for slc in map(slice, begin, end)]
+
+
+def process_entry(token_freqs, user_length, k1, b, N, avg_length, entry):
+    local_bm25 = Counter()
+    token = entry['token']
+    users_freqs = entry['uids_freqs']
+    for (uid, freq) in users_freqs:
+        bm25_token = math.log(N / token_freqs[token]) * ((k1 + 1) * freq) / \
+                     (k1 * ((1 - b) + b * (user_length[uid] / avg_length)) + freq)
+        local_bm25[uid] += bm25_token
+    return local_bm25
 
 
 class MongoManager:
@@ -40,7 +61,9 @@ class IndexFiles:
     TMP_DIR = './tmp/'
     RAW_PAT = 'forward_index_raw_{:03}.json'
     FORWARD_INDEX = 'forward_index.json'
+    FORWARD_INDEX_COMP = 'forward_index_comp.json'
     REVERSE_INDEX = 'reverse_index.json'
+    REVERSE_INDEX_COMP = 'reverse_index_comp.json'
     DOC_LENGTH = 'doc_length.json'
     DOC_FREQS = 'doc_freqs.json'
     USER_INFOS = 'user_infos.json'
