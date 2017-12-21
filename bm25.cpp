@@ -33,23 +33,23 @@ namespace search {
     std::vector <std::pair<uid_t, double>> BM25::search(std::vector <std::string> const &query,
                                                         size_t qty, size_t sex, size_t city,
                                                         size_t age_from, size_t age_to, size_t relation) {
-        //        auto array_builder = bsoncxx::builder::basic::array{};
-        //        for (const auto& token : query) {
-        //            array_builder.append(token);
-        //        }
-        //        auto collection = connection_["ir_project"]["reverse_index"];
-        //        auto cursor = collection.find(document{}
-        //                                              << "token" << open_document << "$in"
-        //                                              << array_builder << close_document << finalize);
-        //        for (auto& doc : cursor) {
-        //            json cur_doc = json::parse(bsoncxx::to_json(doc));
-        //
-        //            for (auto& pairs: cur_doc["uids_freqs"]){
-        //                uid_t uid = pairs.at(0);
-        //                size_t freq = pairs.at(1);
-        //                update_bm25(cur_doc["token"], uid, freq);
-        //            }
-        //        }
+ /*               auto array_builder = bsoncxx::builder::basic::array{};
+                for (const auto& token : query) {
+                    array_builder.append(token);
+                }
+                auto collection = connection_["ir_project"]["reverse_index"];
+                auto cursor = collection.find(document{}
+                                                      << "token" << open_document << "$in"
+                                                      << array_builder << close_document << finalize);
+                for (auto& doc : cursor) {
+                    json cur_doc = json::parse(bsoncxx::to_json(doc));
+
+                    for (auto& pairs: cur_doc["uids_freqs"]){
+                        uid_t uid = pairs.at(0);
+                        size_t freq = pairs.at(1);
+                        update_bm25(cur_doc["token"], uid, freq);
+                    }
+                }*/
 
         for (auto &token: query) {
             for (auto &pairs: reverse_index_[token]) {
@@ -83,6 +83,8 @@ namespace search {
 
         std::vector <std::pair<uid_t, double>> result(qty);
         std::copy(uid_score.begin(), uid_score.begin() + qty, result.begin());
+
+        bm25_.clear();
 
         return result;
     }
@@ -211,6 +213,7 @@ namespace search {
     void BM25::update_bm25(std::string const &token, uid_t uid, size_t freq) {
         double update = log(n_ / token_freqs_[token]) * ((k1_ + 1) * freq) /
                         (k1_ * ((1 - b_) + b_ * (user_length_[uid] / avg_length_)) + freq);
+
         bm25_[uid] += update;
     }
 
