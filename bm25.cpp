@@ -59,7 +59,7 @@ namespace search {
             }
         }
 
-        std::vector <std::pair<uid_t, double>> uid_score;
+        std::vector<std::pair<uid_t, double>> uid_score;
 
         for (auto &pair: bm25_) {
             uid_t uid = pair.first;
@@ -75,14 +75,16 @@ namespace search {
             uid_score.emplace_back(uid, pair.second);
         }
 
-        std::partial_sort(uid_score.begin(), uid_score.begin() + qty, uid_score.end(),
-                          [](std::pair<int, double> const &left,
-                             std::pair<int, double> const &right) {
+        size_t res_size = std::min(qty, uid_score.size());
+
+        std::partial_sort(uid_score.begin(), uid_score.begin() + res_size, uid_score.end(),
+                          [](std::pair<uid_t, double> const &left,
+                             std::pair<uid_t, double> const &right) {
                               return left.second > right.second;
                           });
 
-        std::vector <std::pair<uid_t, double>> result(qty);
-        std::copy(uid_score.begin(), uid_score.begin() + qty, result.begin());
+        std::vector <std::pair<uid_t, double>> result(res_size);
+        std::copy(uid_score.begin(), uid_score.begin() + res_size, result.begin());
 
         bm25_.clear();
 
