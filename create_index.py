@@ -300,9 +300,9 @@ def build_doc2vec():
     client = MongoClient()
     database = client.ir_project
 
-    model = Doc2Vec(size=20, workers=cores, alpha=0.025, min_alpha=0.025)
+    model = Doc2Vec(size=100, workers=cores, alpha=0.025, min_alpha=0.025)
 
-    docs = [TaggedDocument(entry['text'].split()[:48], [entry['uid']]) for entry in database.forward_index_comp.find()]
+    docs = [TaggedDocument(entry['text'].split()[:48], [entry['uid']]) for entry in database.forward_index.find()]
 
     docs = docs[:256]
     print(len(docs))
@@ -353,7 +353,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script is supposed to build forward and reverse index')
-    parser.add_argument('--action', type=str, default='build_all',
+    parser.add_argument('--action', type=str, default='build_doc2vec',
                         help='')
 
     arguments = parser.parse_args()
