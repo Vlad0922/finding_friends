@@ -194,6 +194,36 @@ def create_execute_code(params_orig, id_list, method, user_field='owner_id'):
     return code
 
 
+def load_user_text(uid):
+    print('Loading text for user: {}'.format(uid))
+    sess =  vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781')
+    api = vk.API(sess)
+
+    wall_params = get_wall_params()
+    wall_params['owner_id'] = uid
+    g_params = get_groups_params()
+    g_params['uid'] = uid
+    user_params = get_user_params()
+
+    wall_posts = api.wall.get(**wall_params)[1:]
+    subscrs = api.users.getSubscriptions(**g_params)[1:]
+    groups = api.groups.get(**g_params)[1:]
+
+
+    text = ''
+
+    for p in wall_posts:
+        text += ' ' + p['text']
+
+    for s in subscrs:
+        text += ' ' + s['name']
+    
+    for g in groups:
+        text += ' ' + g['name']
+
+    return text 
+
+
 def load_subsciptions(api):
     client = MongoClient()
     db = client.ir_project
@@ -369,6 +399,9 @@ def load_user_info(api):
 
 
 def main(args):
+    #txt = load_user_text(1)
+    #print(txt)
+    #exit(1)
     # auth_params = get_auth_params()
     sessions = [vk.AuthSession(**get_auth_params()), 
                 vk.Session(access_token='384caffdac72438ecf840f594ce7c59a0a4976332a5e309c50f55d1a8fe46de70529902f0bec9859e6781'), #vlad

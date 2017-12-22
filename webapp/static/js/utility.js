@@ -17,19 +17,20 @@ if (!String.format) {
 
 function add_search_results(data)
 {
+    console.log('adding result...');
     data.sort((a, b) => (b['score'] - a['score']));
 
     Plotly.purge('topics_wrapper');
 
     table = $('#search_table').DataTable();
-
-    table.clear();
+    console.log('clearing the table...');
+    table.clear().draw();
     topics = {};
 
     for(idx in data)
     {
         person = data[idx];
-
+        if(idx == 0){console.log(person);}
         topics[person['uid']] = person['topics_heatmap'];
 
         table.row.add({
@@ -42,7 +43,7 @@ function add_search_results(data)
                                         'topics_top':person['topics'],
                                         'topics_words':person['topics_words']
                                         },                        
-                        'Photo': {'photo':person['photo']},
+                        'Photo': {'photo':person['photo_max_orig']},
                         'Score': person['score'], 
                     }).draw()
     }    
@@ -194,7 +195,7 @@ $("#query_submit_btn").on("click", function ()
     var request_data = {'text': value, 'gender': filters['gender'], 'age_from':filters['age_from'], 'age_to':filters['age_to'],'city':filters['city'], 'status':filters['status'] };
 
     console.log(request_data);
- 
+
     $.ajax({
       type: 'GET',
       url: '/process_query',
